@@ -38,7 +38,7 @@ echo -e "${BLUE}==============================${RESET}"
 usage() {
   echo "MagicADPwn - Automated AD Enumeration & Exploitation"
   echo ""
-  echo "Usage: $0 -t <target_ip/hostname> [-u <username>] [-p <password> | -H <hash> | -k [--no-pass]] [--local-auth] [-v]"
+  echo "Usage: $0 -t <target_ip/hostname> [-u <username>] [-p <password> | -H <hash> | -k [--no-pass]] [--local-auth] [--spray-users <file>] [--spray-passwords <file>] [-v]"
   echo ""
   echo "Required:"
   echo "  -t, --target       Target Domain Controller IP/hostname"
@@ -50,6 +50,8 @@ usage() {
   echo "  -k, --kerberos     Use Kerberos authentication"
   echo "      --no-pass      Skip password/hash when using Kerberos"
   echo "      --local-auth   Use local authentication"
+  echo "  --spray-users <file>   Supply a file with usernames for password spraying"
+  echo "  --spray-passwords <file>   Supply a file with passwords for password spraying"
   echo "  --no-recon         Skip reconnaissance phase"
   echo "  --report <format>  Generate report (json, csv, markdown, html)"
   echo "  -v, --verbose      Enable verbose output"
@@ -73,6 +75,8 @@ LOCAL_AUTH=false
 NO_RECON=false
 REPORT_FORMAT=""
 VERBOSE=false
+SPRAY_USERS=""
+SPRAY_PASSWORDS=""
 
 while [[ "$#" -gt 0 ]]; do
   case "$1" in
@@ -104,6 +108,14 @@ while [[ "$#" -gt 0 ]]; do
       LOCAL_AUTH=true
       shift
       ;;
+    --spray-users)
+      SPRAY_USERS="$2"
+      shift 2
+      ;;
+    --spray-passwords)
+      SPRAY_PASSWORDS="$2"
+      shift 2
+      ;;
     --no-recon)
       NO_RECON=true
       shift
@@ -133,13 +145,21 @@ if [[ -z "$TARGET" ]]; then
   exit 1
 fi
 
-# Default to guest/anonymous authentication if no credentials are provided
-if [[ -z "$USERNAME" ]]; then
-  echo "No username provided, attempting guest/anonymous authentication."
-  USERNAME="guest"
+# Determine authentication mode
+if [[ -n "$USERNAME" && -n "$PASSWORD" ]]; then
+  echo "Using provided username and password for authentication."
+elif [[ -n "$USERNAME" && -n "$SPRAY_PASSWORDS" ]]; then
+  echo "Performing password spraying with the provided username and password list."
+elif [[ -n "$PASSWORD" && -n "$SPRAY_USERS" ]]; then
+  echo "Performing password spraying with the provided user list and password."
+elif [[ -n "$SPRAY_USERS" && -n "$SPRAY_PASSWORDS" ]]; then
+  echo "Performing full password spraying with user and password lists."
+else
+  echo "No valid authentication method provided. Exiting."
+  exit 1
 fi
 
 # Placeholder for main execution logic
-echo "Starting MagicADPwn on $TARGET with user: $USERNAME"
+echo "Starting MagicADPwn on $TARGET"
 
 # Additional enumeration and exploitation logic will be added here
