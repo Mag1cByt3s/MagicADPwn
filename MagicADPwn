@@ -319,6 +319,60 @@ dump_user_descriptions() {
   echo -e "${GREEN}[INFO]${RESET} User descriptions saved to $desc_file"
 }
 
+# Function to enumerate readable and writable SMB shares
+enumerate_smb_shares() {
+  local target="$1"
+  local user="$2"
+  local pass="$3"
+  local hash="$4"
+  local shares_file="$BASE_DIR/smb_shares.txt"
+  
+  echo -e "${GREEN}[INFO]${RESET} Enumerating readable and writable SMB shares..."
+  
+  local cmd="nxc smb "$target" --shares --filter-shares READ WRITE"
+  
+  if [[ -n "$user" ]]; then
+    cmd+=" -u \"$user\""
+  fi
+  if [[ -n "$pass" ]]; then
+    cmd+=" -p \"$pass\""
+  fi
+  if [[ -n "$hash" ]]; then
+    cmd+=" -H \"$hash\""
+  fi
+  
+  echo -e "${GREEN}[INFO]${RESET} Running: $cmd"
+  eval "$cmd" | tee "$shares_file"
+  echo -e "${GREEN}[INFO]${RESET} SMB share enumeration results saved to $shares_file"
+}
+
+# Function to list all readable files using spider_plus
+enumerate_readable_files() {
+  local target="$1"
+  local user="$2"
+  local pass="$3"
+  local hash="$4"
+  local files_file="$BASE_DIR/readable_files.txt"
+  
+  echo -e "${GREEN}[INFO]${RESET} Enumerating readable files on SMB shares..."
+  
+  local cmd="nxc smb "$target" -M spider_plus"
+  
+  if [[ -n "$user" ]]; then
+    cmd+=" -u \"$user\""
+  fi
+  if [[ -n "$pass" ]]; then
+    cmd+=" -p \"$pass\""
+  fi
+  if [[ -n "$hash" ]]; then
+    cmd+=" -H \"$hash\""
+  fi
+  
+  echo -e "${GREEN}[INFO]${RESET} Running: $cmd"
+  eval "$cmd" | tee "$files_file"
+  echo -e "${GREEN}[INFO]${RESET} Readable files enumeration results saved to $files_file"
+}
+
 # Ensure a target is provided
 if [[ -z "$TARGET" ]]; then
   echo -e "${RED}[ERROR]${RESET} Target (-t) is required."
@@ -343,6 +397,12 @@ scan_vulnerabilities "$TARGET" "$USERNAME" "$PASSWORD" "$NTLM_HASH"
 
 # Dump user descriptions from Active Directory
 dump_user_descriptions "$TARGET" "$USERNAME" "$PASSWORD" "$NTLM_HASH"
+
+# Enumerate readable and writable SMB shares
+enumerate_smb_shares "$TARGET" "$USERNAME" "$PASSWORD" "$NTLM_HASH"
+
+# Enumerate all readable files using spider_plus
+enumerate_readable_files "$TARGET" "$USERNAME" "$PASSWORD" "$NTLM_HASH"
 
 # Determine authentication mode
 if [[ -n "$SPRAY_USERS" || -n "$SPRAY_PASSWORDS" ]]; then

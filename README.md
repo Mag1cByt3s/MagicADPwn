@@ -27,6 +27,9 @@ MagicADPwn is a standalone Bash script designed to automate the enumeration and 
 - Optional interactive HTML report with visual attack paths (future feature)
 - Smart password spraying detection for SMB/LDAP
 - **Vulnerability Scanning** for known exploits like Zerologon, PrintNightmare, SMBGhost, and MS17-010
+- **SMB Enumeration**:
+  - Enumerate **readable and writable** SMB shares
+  - List all readable files using the **spider_plus** module
 
 <br>
 
@@ -79,16 +82,15 @@ Optional:
 <br>
 
 ## Attack Flow
-- Authentication Check: Validate credentials or fallback to guest/anonymous.
-- Reconnaissance: Extract user/group information, SPNs, shares, ACLs, GPOs, etc.
-- Privilege Escalation Checks: Identify Kerberoasting, AS-REP roasting, RBCD, and AD CS vulnerabilities.
-- Exploitation: Automate privilege escalation, lateral movement, and persistence.
-- Reporting: Generate structured reports for review.
-- **Password Spraying Logic:**
-  - If SMB (port 445) is open, `nxc smb` is used for authentication attempts.
-  - If LDAP (port 389) is open, `nxc ldap` is used for authentication attempts.
-  - If neither service is available, password spraying is skipped.
-  - The tool can spray using a username list and password list, a single password with a user list, or a single username with a password list.
+- **Authentication Check**: Validate credentials or fallback to guest/anonymous.
+- **Reconnaissance**: Extract user/group information, SPNs, shares, ACLs, GPOs, etc.
+- **Privilege Escalation Checks**: Identify Kerberoasting, AS-REP roasting, RBCD, and AD CS vulnerabilities.
+- **Exploitation**: Automate privilege escalation, lateral movement, and persistence.
+- **Vulnerability Scanning**: Scan for known vulnerabilities like Zerologon, PrintNightmare, SMBGhost, and MS17-010.
+- **SMB Enumeration**:
+  - Find **readable and writable SMB shares**
+  - Use **spider_plus** to list all readable files
+- **Reporting**: Generate structured reports for review.
 
 <br>
 
