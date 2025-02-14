@@ -57,6 +57,11 @@ usage() {
   exit 0
 }
 
+# Ensure arguments are provided
+if [[ "$#" -eq 0 ]]; then
+  usage
+fi
+
 # Parse command-line arguments
 TARGET=""
 USERNAME=""
@@ -124,6 +129,7 @@ done
 # Ensure a target is provided
 if [[ -z "$TARGET" ]]; then
   echo -e "${RED}[ERROR]${RESET} Target (-t) is required."
+  usage
   exit 1
 fi
 
