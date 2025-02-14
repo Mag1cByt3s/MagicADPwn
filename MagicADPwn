@@ -292,6 +292,33 @@ scan_vulnerabilities() {
   echo -e "${GREEN}[INFO]${RESET} Vulnerability scan results saved to $vuln_file"
 }
 
+# Function to dump user descriptions from Active Directory
+dump_user_descriptions() {
+  local target="$1"
+  local user="$2"
+  local pass="$3"
+  local hash="$4"
+  local desc_file="$BASE_DIR/user_descriptions.txt"
+  
+  echo -e "${GREEN}[INFO]${RESET} Dumping user descriptions from Active Directory..."
+  
+  local cmd="nxc ldap \"$target\" -M get-desc-users"
+
+  if [[ -n "$user" ]]; then
+    cmd+=" -u \"$user\""
+  fi
+  if [[ -n "$pass" ]]; then
+    cmd+=" -p \"$pass\""
+  fi
+  if [[ -n "$hash" ]]; then
+    cmd+=" -H \"$hash\""
+  fi
+
+  echo -e "${GREEN}[INFO]${RESET} Running: $cmd"
+  eval "$cmd" | tee "$desc_file"
+  echo -e "${GREEN}[INFO]${RESET} User descriptions saved to $desc_file"
+}
+
 # Ensure a target is provided
 if [[ -z "$TARGET" ]]; then
   echo -e "${RED}[ERROR]${RESET} Target (-t) is required."
@@ -313,6 +340,9 @@ enumerate_groups "$TARGET" "$USERNAME" "$PASSWORD" "$NTLM_HASH"
 
 # Scan for known vulnerabilities using provided credentials
 scan_vulnerabilities "$TARGET" "$USERNAME" "$PASSWORD" "$NTLM_HASH"
+
+# Dump user descriptions from Active Directory
+dump_user_descriptions "$TARGET" "$USERNAME" "$PASSWORD" "$NTLM_HASH"
 
 # Determine authentication mode
 if [[ -n "$SPRAY_USERS" || -n "$SPRAY_PASSWORDS" ]]; then

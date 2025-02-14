@@ -21,6 +21,7 @@ MagicADPwn is a standalone Bash script designed to automate the enumeration and 
   - Kerberos authentication
   - Guest/anonymous fallback
 - User and Group enumeration
+- User description dumping
 - Automated attack path discovery and execution
 - Generates structured reports in JSON, CSV, Markdown, and HTML
 - Optional interactive HTML report with visual attack paths (future feature)
