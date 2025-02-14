@@ -24,6 +24,7 @@ MagicADPwn is a standalone Bash script designed to automate the enumeration and 
 - Generates structured reports in JSON, CSV, Markdown, and HTML
 - Optional interactive HTML report with visual attack paths (future feature)
 - Smart password spraying detection for SMB/LDAP
+- **Vulnerability Scanning** for known exploits like Zerologon, PrintNightmare, SMBGhost, and MS17-010
 
 <br>
 
