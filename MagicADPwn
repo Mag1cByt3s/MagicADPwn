@@ -1,2 +1,139 @@
 #!/usr/bin/env bash
 
+# MagicADPwn - Automated Active Directory enumeration and exploitation tool
+
+# Define directories
+BASE_DIR="$HOME/.magicadpwn"
+LOG_DIR="$BASE_DIR/logs"
+REPORT_DIR="$BASE_DIR/reports"
+
+# Function to ensure a directory exists
+ensure_dir_exists() {
+  local dir="$1"
+  if [[ ! -d "$dir" ]]; then
+    mkdir -p "$dir" || {
+      echo "[ERROR] Failed to create directory: $dir. Check permissions."
+      exit 1
+    }
+  fi
+}
+
+# Ensure necessary directories exist
+ensure_dir_exists "$BASE_DIR"
+ensure_dir_exists "$LOG_DIR"
+ensure_dir_exists "$REPORT_DIR"
+
+# Colors for output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+BLUE='\033[0;34m'
+RESET='\033[0m'
+
+# Display banner
+echo -e "${BLUE}==============================${RESET}"
+echo -e "${GREEN}       MagicADPwn v1.0       ${RESET}"
+echo -e "${BLUE}==============================${RESET}"
+
+# Usage function
+usage() {
+  echo "MagicADPwn - Automated AD Enumeration & Exploitation"
+  echo ""
+  echo "Usage: $0 -t <target_ip/hostname> [-u <username>] [-p <password> | -H <hash> | -k [--no-pass]] [--local-auth] [-v]"
+  echo ""
+  echo "Required:"
+  echo "  -t, --target       Target Domain Controller IP/hostname"
+  echo ""
+  echo "Optional:"
+  echo "  -u, --user         Username (default: guest/anonymous)"
+  echo "  -p, --pass         Password"
+  echo "  -H, --hash         NTLM hash"
+  echo "  -k, --kerberos     Use Kerberos authentication"
+  echo "      --no-pass      Skip password/hash when using Kerberos"
+  echo "      --local-auth   Use local authentication"
+  echo "  --no-recon         Skip reconnaissance phase"
+  echo "  --report <format>  Generate report (json, csv, markdown, html)"
+  echo "  -v, --verbose      Enable verbose output"
+  echo ""
+  exit 0
+}
+
+# Parse command-line arguments
+TARGET=""
+USERNAME=""
+PASSWORD=""
+NTLM_HASH=""
+KERBEROS=false
+NO_PASS=false
+LOCAL_AUTH=false
+NO_RECON=false
+REPORT_FORMAT=""
+VERBOSE=false
+
+while [[ "$#" -gt 0 ]]; do
+  case "$1" in
+    -t|--target)
+      TARGET="$2"
+      shift 2
+      ;;
+    -u|--user)
+      USERNAME="$2"
+      shift 2
+      ;;
+    -p|--pass)
+      PASSWORD="$2"
+      shift 2
+      ;;
+    -H|--hash)
+      NTLM_HASH="$2"
+      shift 2
+      ;;
+    -k|--kerberos)
+      KERBEROS=true
+      shift
+      ;;
+    --no-pass)
+      NO_PASS=true
+      shift
+      ;;
+    --local-auth)
+      LOCAL_AUTH=true
+      shift
+      ;;
+    --no-recon)
+      NO_RECON=true
+      shift
+      ;;
+    --report)
+      REPORT_FORMAT="$2"
+      shift 2
+      ;;
+    -v|--verbose)
+      VERBOSE=true
+      shift
+      ;;
+    -h|--help)
+      usage
+      ;;
+    *)
+      echo -e "${RED}[ERROR]${RESET} Unknown option: $1"
+      usage
+      ;;
+  esac
+done
+
+# Ensure a target is provided
+if [[ -z "$TARGET" ]]; then
+  echo -e "${RED}[ERROR]${RESET} Target (-t) is required."
+  exit 1
+fi
+
+# Default to guest/anonymous authentication if no credentials are provided
+if [[ -z "$USERNAME" ]]; then
+  echo "No username provided, attempting guest/anonymous authentication."
+  USERNAME="guest"
+fi
+
+# Placeholder for main execution logic
+echo "Starting MagicADPwn on $TARGET with user: $USERNAME"
+
+# Additional enumeration and exploitation logic will be added here
