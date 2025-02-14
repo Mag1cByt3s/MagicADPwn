@@ -34,6 +34,111 @@ echo -e "${BLUE}==============================${RESET}"
 echo -e "${GREEN}       MagicADPwn v1.0       ${RESET}"
 echo -e "${BLUE}==============================${RESET}"
 
+# Usage function
+usage() {
+  echo "MagicADPwn - Automated AD Enumeration & Exploitation"
+  echo ""
+  echo "Usage: $0 -t <target_ip/hostname> [-u <username>] [-p <password> | -H <hash> | -k [--no-pass]] [--local-auth] [-v]"
+  echo ""
+  echo "Required:"
+  echo "  -t, --target       Target Domain Controller IP/hostname"
+  echo ""
+  echo "Optional:"
+  echo "  -u, --user         Username (default: guest/anonymous)"
+  echo "  -p, --pass         Password"
+  echo "  -H, --hash         NTLM hash"
+  echo "  -k, --kerberos     Use Kerberos authentication"
+  echo "      --no-pass      Skip password/hash when using Kerberos"
+  echo "      --local-auth   Use local authentication"
+  echo "  --no-recon         Skip reconnaissance phase"
+  echo "  --report <format>  Generate report (json, csv, markdown, html)"
+  echo "  -v, --verbose      Enable verbose output"
+  echo ""
+  exit 0
+}
+
+# Ensure arguments are provided
+if [[ "$#" -eq 0 ]]; then
+  usage
+fi
+
+# Parse command-line arguments
+TARGET=""
+USERNAME=""
+PASSWORD=""
+NTLM_HASH=""
+KERBEROS=false
+NO_PASS=false
+LOCAL_AUTH=false
+NO_RECON=false
+REPORT_FORMAT=""
+VERBOSE=false
+
+while [[ "$#" -gt 0 ]]; do
+  case "$1" in
+    -t|--target)
+      TARGET="$2"
+      shift 2
+      ;;
+    -u|--user)
+      USERNAME="$2"
+      shift 2
+      ;;
+    -p|--pass)
+      PASSWORD="$2"
+      shift 2
+      ;;
+    -H|--hash)
+      NTLM_HASH="$2"
+      shift 2
+      ;;
+    -k|--kerberos)
+      KERBEROS=true
+      shift
+      ;;
+    --no-pass)
+      NO_PASS=true
+      shift
+      ;;
+    --local-auth)
+      LOCAL_AUTH=true
+      shift
+      ;;
+    --no-recon)
+      NO_RECON=true
+      shift
+      ;;
+    --report)
+      REPORT_FORMAT="$2"
+      shift 2
+      ;;
+    -v|--verbose)
+      VERBOSE=true
+      shift
+      ;;
+    -h|--help)
+      usage
+      ;;
+    *)
+      echo -e "${RED}[ERROR]${RESET} Unknown option: $1"
+      usage
+      ;;
+  esac
+done
+
+# Ensure a target is provided
+if [[ -z "$TARGET" ]]; then
+  echo -e "${RED}[ERROR]${RESET} Target (-t) is required."
+  usage
+  exit 1
+fi
+
+# Default to guest/anonymous authentication if no credentials are provided
+if [[ -z "$USERNAME" ]]; then
+  echo "No username provided, attempting guest/anonymous authentication."
+  USERNAME="guest"
+fi
+
 # Function to check if a port is open
 check_port() {
   local target="$1"
