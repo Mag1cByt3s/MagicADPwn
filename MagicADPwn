@@ -205,6 +205,33 @@ enumerate_users() {
   echo -e "${GREEN}[INFO]${RESET} User list saved to $BASE_DIR/users.txt"
 }
 
+# Function to enumerate groups from Active Directory
+enumerate_groups() {
+  local target="$1"
+  local user="$2"
+  local pass="$3"
+  local hash="$4"
+  local groups_file="$BASE_DIR/groups.txt"
+  
+  echo -e "${GREEN}[INFO]${RESET} Enumerating groups on Active Directory..."
+  
+  local cmd="nxc smb "$target" --groups"
+  
+  if [[ -n "$user" ]]; then
+    cmd+=" -u \"$user\""
+  fi
+  if [[ -n "$pass" ]]; then
+    cmd+=" -p \"$pass\""
+  fi
+  if [[ -n "$hash" ]]; then
+    cmd+=" -H \"$hash\""
+  fi
+  
+  echo -e "${GREEN}[INFO]${RESET} Running: $cmd"
+  eval "$cmd" | tee "$groups_file"
+  echo -e "${GREEN}[INFO]${RESET} Group enumeration results saved to $groups_file"
+}
+
 # Function for password spraying
 password_spray() {
   local target="$1"
@@ -280,6 +307,9 @@ enumerate_computers "$TARGET" "$USERNAME" "$PASSWORD" "$NTLM_HASH" "$KERBEROS"
 
 # Enumerate users from Active Directory
 enumerate_users "$TARGET" "$USERNAME" "$PASSWORD" "$NTLM_HASH" "$KERBEROS"
+
+# Enumerate groups from Active Directory
+enumerate_groups "$TARGET" "$USERNAME" "$PASSWORD" "$NTLM_HASH"
 
 # Scan for known vulnerabilities using provided credentials
 scan_vulnerabilities "$TARGET" "$USERNAME" "$PASSWORD" "$NTLM_HASH"
