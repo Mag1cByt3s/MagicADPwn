@@ -23,6 +23,7 @@ MagicADPwn is a standalone Bash script designed to automate the enumeration and 
 - Automated attack path discovery and execution
 - Generates structured reports in JSON, CSV, Markdown, and HTML
 - Optional interactive HTML report with visual attack paths (future feature)
+- Smart password spraying detection for SMB/LDAP
 
 <br>
 
@@ -62,9 +63,11 @@ Optional:
     - If using Kerberos ticket cache (no password or hash), set the `KRB5CCNAME` environment variable to the path of your ticket and use `--no-pass`.
   - `--no-pass`: Skip password or hash when using Kerberos authentication. Requires `-k`.
   - `--local-auth`: Use local authentication (optional).
-  - `--no-recon`: Skip initial enumeration and go straight to attacks
-  - `--report <format>`: Generate a report (json, csv, markdown, html)
-  - `-v`, `--verbose`: Enable verbose debugging output
+  - `--spray-users <file>`: Supply a file with usernames for password spraying.
+  - `--spray-passwords <file>`: Supply a file with passwords for password spraying.
+  - `--no-recon`: Skip initial enumeration and go straight to attacks.
+  - `--report <format>`: Generate a report (json, csv, markdown, html).
+  - `-v`, `--verbose`: Enable verbose debugging output.
 
 <br>
 
@@ -78,6 +81,11 @@ Optional:
 - Privilege Escalation Checks: Identify Kerberoasting, AS-REP roasting, RBCD, and AD CS vulnerabilities.
 - Exploitation: Automate privilege escalation, lateral movement, and persistence.
 - Reporting: Generate structured reports for review.
+- **Password Spraying Logic:**
+  - If SMB (port 445) is open, `nxc smb` is used for authentication attempts.
+  - If LDAP (port 389) is open, `nxc ldap` is used for authentication attempts.
+  - If neither service is available, password spraying is skipped.
+  - The tool can spray using a username list and password list, a single password with a user list, or a single username with a password list.
 
 <br>
 
@@ -119,3 +127,20 @@ Kerberos auth with password:
 ```bash
 ./MagicADPwn -t dc.company.com -u administrator -p 'StrongPassword123' -k
 ```
+
+<br>
+
+Password Spraying (SMB/LDAP auto-detection):
+
+- Username and password lists:
+  ```bash
+  ./MagicADPwn -t 192.168.1.100 --spray-users users.txt --spray-passwords passwords.txt
+  ```
+- Username list with a single password:
+  ```bash
+  ./MagicADPwn -t 192.168.1.100 --spray-users users.txt -p 'Password123'
+  ```
+- Password list with a single username:
+  ```bash
+  ./MagicADPwn -t 192.168.1.100 -u admin --spray-passwords passwords.txt
+  ```

