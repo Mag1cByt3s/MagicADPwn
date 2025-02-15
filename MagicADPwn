@@ -139,6 +139,18 @@ if [[ -z "$USERNAME" ]]; then
   USERNAME="guest"
 fi
 
+# Default to empty password if no password is provided
+if [[ -z "$PASSWORD" ]]; then
+  PASSWORD=""
+  # also set $NO_PASS
+  NO_PASS=true
+fi
+
+# Default to empty password if --no-pass is set
+if [[ "$NO_PASS" == true ]]; then
+  PASSWORD=""
+fi
+
 # Function to check if a port is open
 check_port() {
   local target="$1"
@@ -148,21 +160,46 @@ check_port() {
 
 # Function to retrieve a list of computers from Active Directory
 enumerate_computers() {
-  local target="$1"
+  local target="$1"  # Target DC's IP address
   local user="$2"
   local pass="$3"
   local hash="$4"
   local kerberos="$5"
-  
-  echo -e "${GREEN}[INFO]${RESET} Enumerating computers on Active Directory..."
-  
-  local cmd="GetADComputers.py ${target}"
-  
-  if [[ -n "$user" ]]; then
-    cmd+="/${user}"
+
+  # Automatically retrieve domain if not provided
+  if [[ -z "$DOMAIN" ]]; then
+    if command -v ldapsearch &> /dev/null; then
+      echo -e "${GREEN}[INFO]${RESET} Attempting to retrieve domain name from $target..."
+      local domain_raw
+      domain_raw=$(ldapsearch -LLL -x -H "ldap://10.10.73.51" -s base -b "" defaultNamingContext 2>/dev/null | grep 'defaultNamingContext:' | awk '{print $2}')
+      if [[ -z "$domain_raw" ]]; then
+        echo -e "${RED}[ERROR]${RESET} Unable to retrieve domain name from $target. Please specify DOMAIN manually."
+        exit 1
+      fi
+      # Convert from "DC=baby2,DC=vl" to "baby2.vl"
+      DOMAIN=$(echo "$domain_raw" | sed 's/DC=//Ig' | sed 's/,/./g')
+      echo -e "${GREEN}[INFO]${RESET} Retrieved domain: $DOMAIN"
+    else
+      echo -e "${RED}[ERROR]${RESET} ldapsearch is not installed. Please install ldapsearch or set DOMAIN manually."
+      exit 1
+    fi
   fi
-  if [[ -n "$pass" ]]; then
-    cmd+=":${pass}"
+
+  # Build positional argument as "domain[/username[:password]]"
+  local pos_arg="$DOMAIN"
+  if [[ -n "$user" ]]; then
+    pos_arg+="/$user"
+    # Append password only if provided and not using hash authentication
+    if [[ -n "$pass" && -z "$hash" ]]; then
+      pos_arg+=":$pass"
+    fi
+  fi
+
+  # Build command with flags preceding the positional argument
+  local cmd="GetADComputers.py"
+  cmd+=" -dc-ip ${target}"
+  if [[ "$NO_PASS" == true ]]; then
+    cmd+=" -no-pass"
   fi
   if [[ -n "$hash" ]]; then
     cmd+=" -hashes $hash"
@@ -170,28 +207,57 @@ enumerate_computers() {
   if [[ "$kerberos" == "true" ]]; then
     cmd+=" -k"
   fi
-  
+
+  # Append the positional argument
+  cmd+=" $pos_arg"
+
   echo -e "${GREEN}[INFO]${RESET} Running: $cmd"
   eval "$cmd"
 }
 
 # Function to retrieve a list of users from Active Directory
 enumerate_users() {
-  local target="$1"
+  local target="$1"  # target DC's IP address
   local user="$2"
   local pass="$3"
   local hash="$4"
   local kerberos="$5"
-  
-  echo -e "${GREEN}[INFO]${RESET} Enumerating users on Active Directory..."
-  
-  local cmd="GetADUsers.py -all ${target}"
-  
-  if [[ -n "$user" ]]; then
-    cmd+="/${user}"
+
+  # Automatically retrieve domain if not provided
+  if [[ -z "$DOMAIN" ]]; then
+    if command -v ldapsearch &> /dev/null; then
+      echo -e "${GREEN}[INFO]${RESET} Attempting to retrieve domain name from $target..."
+      local domain_raw
+      domain_raw=$(ldapsearch -LLL -x -h "$target" -s base -b "" defaultNamingContext 2>/dev/null | grep 'defaultNamingContext:' | awk '{print $2}')
+      if [[ -z "$domain_raw" ]]; then
+        echo -e "${RED}[ERROR]${RESET} Unable to retrieve domain name from $target. Please specify DOMAIN manually."
+        exit 1
+      fi
+      # Convert from "DC=baby2,DC=vl" to "baby2.vl"
+      DOMAIN=$(echo "$domain_raw" | sed 's/DC=//Ig' | sed 's/,/./g')
+      echo -e "${GREEN}[INFO]${RESET} Retrieved domain: $DOMAIN"
+    else
+      echo -e "${RED}[ERROR]${RESET} ldapsearch is not installed. Please install ldapsearch or set DOMAIN manually."
+      exit 1
+    fi
   fi
-  if [[ -n "$pass" ]]; then
-    cmd+=":${pass}"
+
+  echo -e "${GREEN}[INFO]${RESET} Enumerating users on Active Directory..."
+
+  # Build positional argument as "domain[/username[:password]]"
+  local pos_arg="$DOMAIN"
+  if [[ -n "$user" ]]; then
+    pos_arg+="/$user"
+    if [[ -n "$pass" && -z "$hash" ]]; then
+      pos_arg+=":$pass"
+    fi
+  fi
+
+  # Build command with flags preceding the positional argument
+  local cmd="GetADUsers.py -all"
+  cmd+=" -dc-ip ${target}"
+  if [[ "$NO_PASS" == true ]]; then
+    cmd+=" -no-pass"
   fi
   if [[ -n "$hash" ]]; then
     cmd+=" -hashes $hash"
@@ -199,10 +265,43 @@ enumerate_users() {
   if [[ "$kerberos" == "true" ]]; then
     cmd+=" -k"
   fi
-  
+  cmd+=" $pos_arg"
+
   echo -e "${GREEN}[INFO]${RESET} Running: $cmd"
-  eval "$cmd" | grep -vE '^(Impacket|\[\*|Name|-------------------)' | awk 'NF {print $1}' | sed '/^$/d' > "$BASE_DIR/users.txt"
+  
+  # Capture output (including stderr) for error checking
+  local output
+  output=$(eval "$cmd" 2>&1)
+  
+  # If an LDAP bind error is detected, fallback to RID brute method
+  if echo "$output" | grep -q "Error in searchRequest"; then
+    echo -e "${RED}[WARNING]${RESET} GetADUsers.py failed with a bind error. Falling back to RID brute method..."
+    enumerate_users_alternative "$target"
+    return
+  fi
+
+  # Process, save, and pretty print the user list
+  echo "$output" | grep -vE '^(Impacket|\[\*|Name|-------------------)' | awk 'NF {print $1}' | sed '/^$/d' > "$BASE_DIR/users.txt"
   echo -e "${GREEN}[INFO]${RESET} User list saved to $BASE_DIR/users.txt"
+  echo -e "${BLUE}-------------------- User List --------------------${RESET}"
+  cat "$BASE_DIR/users.txt"
+}
+
+enumerate_users_alternative() {
+  local target="$1"  # target DC's IP address
+  echo -e "${GREEN}[INFO]${RESET} Running RID brute user enumeration with nxc smb..."
+  
+  nxc smb "$target" -u guest -p '' --rid-brute 20000 | \
+    grep -oP '(?<=\\)[A-Za-z0-9._-]+' | sed 's/:$//' | sort -u | \
+    grep -v -E '^(Domain|Enterprise|krbtgt|Cert|Schema|Group|Read-only|Cloneable|Protected|Key|RAS|Allowed|Denied|DC\$|DnsAdmins|DnsUpdateProxy)$' > "$BASE_DIR/users.txt"
+  
+  if [[ -s "$BASE_DIR/users.txt" ]]; then
+    echo -e "${GREEN}[INFO]${RESET} User list retrieved via RID brute and saved to $BASE_DIR/users.txt"
+    echo -e "${BLUE}-------------------- User List --------------------${RESET}"
+    cat "$BASE_DIR/users.txt"
+  else
+    echo -e "${RED}[ERROR]${RESET} RID brute alternative method failed. No users retrieved."
+  fi
 }
 
 # Function to enumerate groups from Active Directory
