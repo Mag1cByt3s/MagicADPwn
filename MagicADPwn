@@ -519,30 +519,32 @@ enumerate_readable_files() {
   local files_file="$DOMAIN_DIR/readable_files.txt"
   
   print_section "Enumerating Readable Files"
-  local cmd="nxc smb \"$target\" -M spider_plus"
-  [[ -n "$user" ]] && cmd+=" -u \"$user\""
+  
+  # Build the spider command using spider_plus with an exclude filter.
+  local spider_cmd="nxc smb \"$target\" -M spider_plus"
+  [[ -n "$user" ]] && spider_cmd+=" -u \"$user\""
   if [[ "$NO_PASS" == true ]]; then
-    cmd+=" -p \"\""
+    spider_cmd+=" -p \"\""
   elif [[ -n "$pass" ]]; then
-    cmd+=" -p \"$pass\""
+    spider_cmd+=" -p \"$pass\""
   fi
-  [[ -n "$hash" ]] && cmd+=" -H \"$hash\""
+  [[ -n "$hash" ]] && spider_cmd+=" -H \"$hash\""
+  # Use the -o option to exclude unwanted shares (ADMIN$, C$, print$, IPC$)
+  spider_cmd+=" -o 'EXCLUDE_FILTER=admin\$, c\$, print\$, ipc\$'"
   
-  print_info "Running: $cmd"
-  # Capture spider_plus output into a variable, write full output to files_file
-  local spider_output
-  spider_output=$(eval "$cmd" 2>&1 | tee "$files_file")
-  print_info "Readable files enumeration results saved to $files_file"
+  print_info "Running: $spider_cmd"
+  local output
+  output=$(eval "$spider_cmd" 2>&1)
   
-  # Attempt to extract the JSON file path from the spider_output
+  echo "$output" > "$files_file"
+  print_info "Readable files spidering complete. Results saved to $files_file"
+  
+  # Attempt to extract the JSON metadata file path and pretty-print with jq
   local json_file
-  json_file=$(echo "$spider_output" | grep -oP '(?<=Saved share-file metadata to ")[^"]+')
-  
+  json_file=$(echo "$output" | grep -oP '(?<=Saved share-file metadata to ")[^"]+')
   if [[ -n "$json_file" && -f "$json_file" ]]; then
-    print_section "Spider Plus JSON Output"
+    print_section "Spider JSON Output"
     cat "$json_file" | jq
-  else
-    print_warning "No JSON output file found."
   fi
 }
 
@@ -630,7 +632,9 @@ enumerate_groups "$TARGET" "$USERNAME" "$PASSWORD" "$NTLM_HASH"
 scan_vulnerabilities "$TARGET" "$USERNAME" "$PASSWORD" "$NTLM_HASH"
 dump_user_descriptions "$TARGET" "$USERNAME" "$PASSWORD" "$NTLM_HASH"
 enumerate_smb_shares "$TARGET" "$USERNAME" "$PASSWORD" "$NTLM_HASH"
-enumerate_readable_files "$TARGET" "$USERNAME" "$PASSWORD" "$NTLM_HASH"
+
+# disable for now due to issues with spider_plus
+#enumerate_readable_files "$TARGET" "$USERNAME" "$PASSWORD" "$NTLM_HASH"
 enumerate_groupmembership "$TARGET" "$USERNAME" "$PASSWORD" "$NTLM_HASH"
 
 if [[ -n "$SPRAY_USERS" || -n "$SPRAY_PASSWORDS" ]]; then
