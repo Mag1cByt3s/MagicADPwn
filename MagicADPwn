@@ -93,6 +93,8 @@ if [[ "$#" -eq 0 ]]; then
 fi
 
 TARGET=""
+DOMAIN=""
+DOMAIN_DIR=""
 USERNAME=""
 PASSWORD=""
 NTLM_HASH=""
@@ -326,7 +328,7 @@ enumerate_users() {
   fi
 
   local cmd="GetADUsers.py -all -dc-ip ${target}"
-  [[ "$NO_PASS" == true ]] && cmd+=" -no-pass"
+  [[ "$NO_PASS" == true ]] && cmd+=" -no-pass" || { [[ -n "$pass" ]] && cmd+=" -p \"$pass\""; }
   [[ -n "$hash" ]] && cmd+=" -hashes $hash"
   [[ "$kerberos" == "true" ]] && cmd+=" -k"
   cmd+=" $pos_arg"
@@ -340,10 +342,11 @@ enumerate_users() {
     return
   fi
 
-  echo "$output" | grep -vE '^(Impacket|\[\*|Name|-------------------)' | awk 'NF {print $1}' | sed '/^$/d' > "$BASE_DIR/users.txt"
-  print_info "User list saved to $BASE_DIR/users.txt"
+  # Write the output to a file in the domain subfolder
+  echo "$output" | grep -vE '^(Impacket|\[\*|Name|-------------------)' | awk 'NF {print $1}' | sed '/^$/d' > "$DOMAIN_DIR/users.txt"
+  print_info "User list saved to $DOMAIN_DIR/users.txt"
   print_section "User List"
-  cat "$BASE_DIR/users.txt"
+  cat "$DOMAIN_DIR/users.txt"
 }
 
 enumerate_users_alternative() {
@@ -353,12 +356,12 @@ enumerate_users_alternative() {
   
   nxc smb "$target" -u guest -p "" --rid-brute 20000 | \
     grep -oP '(?<=\\)[A-Za-z0-9._-]+' | sed 's/:$//' | sort -u | \
-    grep -v -E '^(Domain|Enterprise|krbtgt|Cert|Schema|Group|Read-only|Cloneable|Protected|Key|RAS|Allowed|Denied|DC\$|DnsAdmins|DnsUpdateProxy)$' > "$BASE_DIR/users.txt"
+    grep -v -E '^(Domain|Enterprise|krbtgt|Cert|Schema|Group|Read-only|Cloneable|Protected|Key|RAS|Allowed|Denied|DC\$|DnsAdmins|DnsUpdateProxy)$' > "$DOMAIN_DIR/users.txt"
   
-  if [[ -s "$BASE_DIR/users.txt" ]]; then
-    print_info "User list retrieved via RID brute and saved to $BASE_DIR/users.txt"
+  if [[ -s "$DOMAIN_DIR/users.txt" ]]; then
+    print_info "User list retrieved via RID brute and saved to $DOMAIN_DIR/users.txt"
     print_section "User List"
-    cat "$BASE_DIR/users.txt"
+    cat "$DOMAIN_DIR/users.txt"
   else
     print_error "RID brute alternative method failed. No users retrieved."
   fi
@@ -369,7 +372,7 @@ enumerate_groups() {
   local user="$2"
   local pass="$3"
   local hash="$4"
-  local groups_file="$BASE_DIR/groups.txt"
+  local groups_file="$DOMAIN_DIR/groups.txt"
   
   print_section "Enumerating Groups on Active Directory"
   local cmd="nxc smb \"$target\" --groups"
@@ -390,7 +393,7 @@ password_spray() {
   local target="$1"
   local users="$2"
   local passwords="$3"
-  local creds_file="$BASE_DIR/creds.txt"
+  local creds_file="$DOMAIN_DIR/creds.txt"
   
   print_section "Password Spraying"
   print_info "Checking available authentication services on $target..."
@@ -432,7 +435,7 @@ scan_vulnerabilities() {
   local user="$2"
   local pass="$3"
   local hash="$4"
-  local vuln_file="$BASE_DIR/vulnerabilities.txt"
+  local vuln_file="$DOMAIN_DIR/vulnerabilities.txt"
 
   print_section "Vulnerability Scanning"
   local cmd="nxc smb \"$target\" -M zerologon -M printnightmare -M smbghost -M ms17-010"
@@ -454,7 +457,7 @@ dump_user_descriptions() {
   local user="$2"
   local pass="$3"
   local hash="$4"
-  local desc_file="$BASE_DIR/user_descriptions.txt"
+  local desc_file="$DOMAIN_DIR/user_descriptions.txt"
   
   print_section "Dumping User Descriptions"
   local cmd="nxc ldap \"$target\" -M get-desc-users"
@@ -476,7 +479,7 @@ enumerate_smb_shares() {
   local user="$2"
   local pass="$3"
   local hash="$4"
-  local shares_file="$BASE_DIR/smb_shares.txt"
+  local shares_file="$DOMAIN_DIR/smb_shares.txt"
   
   print_section "Enumerating SMB Shares"
   local cmd="nxc smb \"$target\" --shares --filter-shares READ WRITE"
@@ -498,7 +501,7 @@ enumerate_readable_files() {
   local user="$2"
   local pass="$3"
   local hash="$4"
-  local files_file="$BASE_DIR/readable_files.txt"
+  local files_file="$DOMAIN_DIR/readable_files.txt"
   
   print_section "Enumerating Readable Files"
   local cmd="nxc smb \"$target\" -M spider_plus"
@@ -535,6 +538,11 @@ if [[ $? -ne 0 || -z "$DOMAIN" ]]; then
 fi
 print_info "Retrieved domain: ${DOMAIN}"
 
+# Create a subfolder for this domain
+DOMAIN_DIR="$BASE_DIR/$DOMAIN"
+ensure_dir_exists "$DOMAIN_DIR"
+print_info "Created domain directory: $DOMAIN_DIR"
+
 enumerate_computers "$TARGET" "$USERNAME" "$PASSWORD" "$NTLM_HASH" "$KERBEROS"
 enumerate_users "$TARGET" "$USERNAME" "$PASSWORD" "$NTLM_HASH" "$KERBEROS"
 enumerate_groups "$TARGET" "$USERNAME" "$PASSWORD" "$NTLM_HASH"
@@ -547,3 +555,5 @@ if [[ -n "$SPRAY_USERS" || -n "$SPRAY_PASSWORDS" ]]; then
   password_spray "$TARGET" "$SPRAY_USERS" "$SPRAY_PASSWORDS"
   exit 0
 fi
+
+# Additional enumeration and exploitation logic can be added here.
