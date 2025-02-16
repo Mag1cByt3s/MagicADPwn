@@ -292,6 +292,7 @@ enumerate_computers() {
   [[ "$kerberos" == "true" ]] && cmd+=" -k"
   cmd+=" $pos_arg"
 
+  print_section "Enumerating Computers on Active Directory"
   print_info "Running: $cmd"
   local output
   output=$(eval "$cmd" 2>&1 | tr -d '\0')
