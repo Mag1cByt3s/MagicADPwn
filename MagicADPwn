@@ -295,7 +295,7 @@ enumerate_computers() {
 
   local cmd="GetADComputers.py -dc-ip ${target}"
   [[ "$NO_PASS" == true ]] && cmd+=" -no-pass"
-  [[ -n "$hash" ]] && cmd+=" -hashes $hash"
+  [[ -n "$hash" ]] && cmd+=" -hashes :$hash"
   [[ "$kerberos" == "true" ]] && cmd+=" -k"
   cmd+=" $pos_arg"
 
@@ -337,7 +337,7 @@ enumerate_users() {
 
   local cmd="GetADUsers.py -all -dc-ip ${target}"
   [[ "$NO_PASS" == true ]] && cmd+=" -no-pass" || { [[ -n "$pass" ]] && cmd+=" -p \"$pass\""; }
-  [[ -n "$hash" ]] && cmd+=" -hashes $hash"
+  [[ -n "$hash" ]] && cmd+=" -hashes :$hash"
   [[ "$kerberos" == "true" ]] && cmd+=" -k"
   cmd+=" $pos_arg"
 
