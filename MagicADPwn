@@ -295,7 +295,7 @@ enumerate_computers() {
   
   # Capture output (including stderr) for error checking
   local output
-  output=$(eval "$cmd" 2>&1)
+  output=$(eval "$cmd" 2>&1 | tr -d '\0')
   
   # If an LDAP bind error is detected, fallback to RID brute method
   if echo "$output" | grep -q "Error in searchRequest"; then
@@ -352,7 +352,7 @@ enumerate_users() {
   
   # Capture output (including stderr) for error checking
   local output
-  output=$(eval "$cmd" 2>&1)
+  output=$(eval "$cmd" 2>&1 | tr -d '\0')
   
   # If an LDAP bind error is detected, fallback to RID brute method
   if echo "$output" | grep -q "Error in searchRequest"; then
