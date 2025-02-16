@@ -292,7 +292,16 @@ enumerate_computers() {
   cmd+=" $pos_arg"
 
   echo -e "${GREEN}[INFO]${RESET} Running: $cmd"
-  eval "$cmd"
+  
+  # Capture output (including stderr) for error checking
+  local output
+  output=$(eval "$cmd" 2>&1)
+  
+  # If an LDAP bind error is detected, fallback to RID brute method
+  if echo "$output" | grep -q "Error in searchRequest"; then
+    echo -e "${RED}[WARNING]${RESET} GetADComputers.py failed with a bind error."
+    return
+  fi
 }
 
 # Function to retrieve a list of users from Active Directory
