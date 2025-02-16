@@ -28,7 +28,14 @@ print_banner() {
 
 print_section() {
   local title="$1"
-  echo -e "\n${BLUE}========== ${title} ==========${RESET}"
+  local padding=4  # 2 spaces on each side
+  local total_length=$(( ${#title} + padding ))
+  local border
+  border=$(printf '%*s' "$total_length" | tr ' ' '=')
+  
+  echo -e "\n${BLUE}${border}${RESET}"
+  echo -e "${BLUE}= ${GREEN}${title}${BLUE} =${RESET}"
+  echo -e "${BLUE}${border}${RESET}"
 }
 
 print_info() {
