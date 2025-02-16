@@ -471,8 +471,15 @@ dump_user_descriptions() {
   [[ -n "$hash" ]] && cmd+=" -H \"$hash\""
   
   print_info "Running: $cmd"
-  eval "$cmd" | tee "$desc_file"
-  print_info "User descriptions saved to $desc_file"
+  local output
+  output=$(eval "$cmd" 2>&1 | tr -d '\0')
+  
+  if echo "$output" | grep -q "Error in searchRequest"; then
+    print_warning "Dumping user descriptions failed with a bind error."
+  else
+    echo "$output" | tee "$desc_file"
+    print_info "User descriptions saved to $desc_file"
+  fi
 }
 
 enumerate_smb_shares() {
