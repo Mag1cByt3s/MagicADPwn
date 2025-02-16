@@ -158,6 +158,45 @@ check_port() {
   timeout 1 bash -c "echo >/dev/tcp/$target/$port" 2>/dev/null && return 0 || return 1
 }
 
+# Function to dynamically generate an entry for /etc/hosts
+generate_hosts_file() {
+  local target="$1"
+  if [[ -z "$target" ]]; then
+    echo -e "${RED}[ERROR]${RESET} No target specified for generating hosts file."
+    return 1
+  fi
+
+  echo -e "${GREEN}[INFO]${RESET} Generating hosts file for target ${target}..."
+  local tmpfile
+  tmpfile=$(mktemp) || { echo -e "${RED}[ERROR]${RESET} Failed to create temporary file."; return 1; }
+
+  # Generate the hosts file using nxc smb and write to a temporary file
+  if nxc smb "$target" --generate-hosts-file "$tmpfile"; then
+    echo -e "${GREEN}[INFO]${RESET} Appending new hosts entries to /etc/hosts..."
+    while IFS= read -r line; do
+      # Skip empty lines
+      if [[ -z "$line" ]]; then
+        continue
+      fi
+
+      # Check if the exact entry already exists in /etc/hosts
+      if ! grep -Fxq "$line" /etc/hosts; then
+        echo "$line" >> /etc/hosts
+        echo -e "${GREEN}[INFO]${RESET} Added: $line"
+      else
+        echo -e "${BLUE}[INFO]${RESET} Already exists: $line"
+      fi
+    done < "$tmpfile"
+
+    rm "$tmpfile"
+    echo -e "${GREEN}[INFO]${RESET} /etc/hosts updated successfully."
+  else
+    echo -e "${RED}[ERROR]${RESET} nxc smb failed to generate hosts file for $target."
+    rm "$tmpfile"
+    return 1
+  fi
+}
+
 # Function to retrieve a list of computers from Active Directory
 enumerate_computers() {
   local target="$1"  # Target DC's IP address
@@ -481,6 +520,9 @@ fi
 
 # Placeholder for main execution logic
 echo "Starting MagicADPwn on $TARGET"
+
+# Dynamically generate an entry for /etc/hosts
+generate_hosts_file "$TARGET"
 
 # Enumerate computers from Active Directory
 enumerate_computers "$TARGET" "$USERNAME" "$PASSWORD" "$NTLM_HASH" "$KERBEROS"
