@@ -87,12 +87,11 @@ EOF
   exit 0
 }
 
-# Ensure arguments are provided
+# --- Parse Arguments --- #
 if [[ "$#" -eq 0 ]]; then
   usage
 fi
 
-# Parse command-line arguments
 TARGET=""
 USERNAME=""
 PASSWORD=""
@@ -156,26 +155,22 @@ while [[ "$#" -gt 0 ]]; do
   esac
 done
 
-# Ensure a target is provided
 if [[ -z "$TARGET" ]]; then
   print_error "Target (-t) is required."
   usage
   exit 1
 fi
 
-# Default to guest/anonymous authentication if no credentials are provided
 if [[ -z "$USERNAME" ]]; then
   print_info "No username provided, attempting guest/anonymous authentication."
   USERNAME="guest"
 fi
 
-# Default to empty password if no password is provided
 if [[ -z "$PASSWORD" ]]; then
   PASSWORD=""
   NO_PASS=true
 fi
 
-# If --no-pass is set, force empty password
 if [[ "$NO_PASS" == true ]]; then
   PASSWORD=""
 fi
@@ -356,7 +351,7 @@ enumerate_users_alternative() {
   print_section "RID Brute User Enumeration"
   print_info "Running RID brute user enumeration with nxc smb..."
   
-  nxc smb "$target" -u guest -p '' --rid-brute 20000 | \
+  nxc smb "$target" -u guest -p "" --rid-brute 20000 | \
     grep -oP '(?<=\\)[A-Za-z0-9._-]+' | sed 's/:$//' | sort -u | \
     grep -v -E '^(Domain|Enterprise|krbtgt|Cert|Schema|Group|Read-only|Cloneable|Protected|Key|RAS|Allowed|Denied|DC\$|DnsAdmins|DnsUpdateProxy)$' > "$BASE_DIR/users.txt"
   
@@ -379,7 +374,11 @@ enumerate_groups() {
   print_section "Enumerating Groups on Active Directory"
   local cmd="nxc smb \"$target\" --groups"
   [[ -n "$user" ]] && cmd+=" -u \"$user\""
-  [[ -n "$pass" ]] && cmd+=" -p \"$pass\""
+  if [[ "$NO_PASS" == true ]]; then
+    cmd+=" -p \"\""
+  elif [[ -n "$pass" ]]; then
+    cmd+=" -p \"$pass\""
+  fi
   [[ -n "$hash" ]] && cmd+=" -H \"$hash\""
   
   print_info "Running: $cmd"
@@ -401,7 +400,11 @@ password_spray() {
     if [[ -n "$users" && -n "$passwords" ]]; then
       nxc smb "$target" -u "$users" -p "$passwords" --continue-on-success | grep [+] | tee -a "$creds_file"
     elif [[ -n "$users" ]]; then
-      nxc smb "$target" -u "$users" -p "$PASSWORD" --continue-on-success | grep [+] | tee -a "$creds_file"
+      if [[ "$NO_PASS" == true ]]; then
+        nxc smb "$target" -u "$users" -p "" --continue-on-success | grep [+] | tee -a "$creds_file"
+      else
+        nxc smb "$target" -u "$users" -p "$PASSWORD" --continue-on-success | grep [+] | tee -a "$creds_file"
+      fi
     elif [[ -n "$passwords" ]]; then
       nxc smb "$target" -u "$USERNAME" -p "$passwords" --continue-on-success | grep [+] | tee -a "$creds_file"
     fi
@@ -410,7 +413,11 @@ password_spray() {
     if [[ -n "$users" && -n "$passwords" ]]; then
       nxc ldap "$target" -u "$users" -p "$passwords" --continue-on-success | grep [+] | tee -a "$creds_file"
     elif [[ -n "$users" ]]; then
-      nxc ldap "$target" -u "$users" -p "$PASSWORD" --continue-on-success | grep [+] | tee -a "$creds_file"
+      if [[ "$NO_PASS" == true ]]; then
+        nxc ldap "$target" -u "$users" -p "" --continue-on-success | grep [+] | tee -a "$creds_file"
+      else
+        nxc ldap "$target" -u "$users" -p "$PASSWORD" --continue-on-success | grep [+] | tee -a "$creds_file"
+      fi
     elif [[ -n "$passwords" ]]; then
       nxc ldap "$target" -u "$USERNAME" -p "$passwords" --continue-on-success | grep [+] | tee -a "$creds_file"
     fi
@@ -430,7 +437,11 @@ scan_vulnerabilities() {
   print_section "Vulnerability Scanning"
   local cmd="nxc smb \"$target\" -M zerologon -M printnightmare -M smbghost -M ms17-010"
   [[ -n "$user" ]] && cmd+=" -u \"$user\""
-  [[ -n "$pass" ]] && cmd+=" -p \"$pass\""
+  if [[ "$NO_PASS" == true ]]; then
+    cmd+=" -p \"\""
+  elif [[ -n "$pass" ]]; then
+    cmd+=" -p \"$pass\""
+  fi
   [[ -n "$hash" ]] && cmd+=" -H \"$hash\""
   
   print_info "Running: $cmd"
@@ -448,7 +459,11 @@ dump_user_descriptions() {
   print_section "Dumping User Descriptions"
   local cmd="nxc ldap \"$target\" -M get-desc-users"
   [[ -n "$user" ]] && cmd+=" -u \"$user\""
-  [[ -n "$pass" ]] && cmd+=" -p \"$pass\""
+  if [[ "$NO_PASS" == true ]]; then
+    cmd+=" -p \"\""
+  elif [[ -n "$pass" ]]; then
+    cmd+=" -p \"$pass\""
+  fi
   [[ -n "$hash" ]] && cmd+=" -H \"$hash\""
   
   print_info "Running: $cmd"
@@ -466,7 +481,11 @@ enumerate_smb_shares() {
   print_section "Enumerating SMB Shares"
   local cmd="nxc smb \"$target\" --shares --filter-shares READ WRITE"
   [[ -n "$user" ]] && cmd+=" -u \"$user\""
-  [[ -n "$pass" ]] && cmd+=" -p \"$pass\""
+  if [[ "$NO_PASS" == true ]]; then
+    cmd+=" -p \"\""
+  elif [[ -n "$pass" ]]; then
+    cmd+=" -p \"$pass\""
+  fi
   [[ -n "$hash" ]] && cmd+=" -H \"$hash\""
   
   print_info "Running: $cmd"
@@ -484,7 +503,11 @@ enumerate_readable_files() {
   print_section "Enumerating Readable Files"
   local cmd="nxc smb \"$target\" -M spider_plus"
   [[ -n "$user" ]] && cmd+=" -u \"$user\""
-  [[ -n "$pass" ]] && cmd+=" -p \"$pass\""
+  if [[ "$NO_PASS" == true ]]; then
+    cmd+=" -p \"\""
+  elif [[ -n "$pass" ]]; then
+    cmd+=" -p \"$pass\""
+  fi
   [[ -n "$hash" ]] && cmd+=" -H \"$hash\""
   
   print_info "Running: $cmd"
@@ -524,5 +547,3 @@ if [[ -n "$SPRAY_USERS" || -n "$SPRAY_PASSWORDS" ]]; then
   password_spray "$TARGET" "$SPRAY_USERS" "$SPRAY_PASSWORDS"
   exit 0
 fi
-
-# Additional enumeration and exploitation logic can be added here.
