@@ -223,16 +223,15 @@ generate_hosts_file() {
 get_domain() {
   local target="$1"
   if [[ -z "$target" ]]; then
-    echo -e "${RED}[ERROR]${RESET} No target specified for domain extraction."
+    echo "No target specified for domain extraction." >&2
     return 1
   fi
 
-  echo -e "${GREEN}[INFO]${RESET} Running nxc smb on target ${target}..."
   # Run nxc smb and capture output; suppress error output for clarity
   local output
   output=$(nxc smb "$target" 2>/dev/null)
   if [[ -z "$output" ]]; then
-    echo -e "${RED}[ERROR]${RESET} No output received from nxc smb for ${target}."
+    echo "No output received from nxc smb for ${target}." >&2
     return 1
   fi
 
@@ -240,11 +239,10 @@ get_domain() {
   local domain
   domain=$(echo "$output" | grep -oP "\(domain:\K[^)]+")
   if [[ -z "$domain" ]]; then
-    echo -e "${RED}[ERROR]${RESET} Could not extract domain from nxc smb output."
+    echo "Could not extract domain from nxc smb output." >&2
     return 1
   fi
 
-  echo -e "${GREEN}[INFO]${RESET} Got domain name: ${domain}"
   echo "$domain"
 }
 
@@ -258,20 +256,12 @@ enumerate_computers() {
 
   # Automatically retrieve domain if not provided
   if [[ -z "$DOMAIN" ]]; then
-    if command -v ldapsearch &> /dev/null; then
-      echo -e "${GREEN}[INFO]${RESET} Attempting to retrieve domain name from $target..."
-      local domain_raw
-      domain_raw=$(ldapsearch -LLL -x -H "ldap://10.10.73.51" -s base -b "" defaultNamingContext 2>/dev/null | grep 'defaultNamingContext:' | awk '{print $2}')
-      if [[ -z "$domain_raw" ]]; then
-        echo -e "${RED}[ERROR]${RESET} Unable to retrieve domain name from $target. Please specify DOMAIN manually."
-        exit 1
-      fi
-      # Convert from "DC=baby2,DC=vl" to "baby2.vl"
-      DOMAIN=$(echo "$domain_raw" | sed 's/DC=//Ig' | sed 's/,/./g')
-      echo -e "${GREEN}[INFO]${RESET} Retrieved domain: $DOMAIN"
-    else
-      echo -e "${RED}[ERROR]${RESET} ldapsearch is not installed. Please install ldapsearch or set DOMAIN manually."
+    DOMAIN=$(get_domain "$target")
+    if [[ $? -ne 0 || -z "$DOMAIN" ]]; then
+      echo -e "${RED}[ERROR]${RESET} Unable to retrieve domain name from $target. Please specify DOMAIN manually."
       exit 1
+    else
+      echo -e "${GREEN}[INFO]${RESET} Retrieved domain: $DOMAIN"
     fi
   fi
 
@@ -313,22 +303,14 @@ enumerate_users() {
   local hash="$4"
   local kerberos="$5"
 
-  # Automatically retrieve domain if not provided
+  # Automatically retrieve domain if not provided using get_domain()
   if [[ -z "$DOMAIN" ]]; then
-    if command -v ldapsearch &> /dev/null; then
-      echo -e "${GREEN}[INFO]${RESET} Attempting to retrieve domain name from $target..."
-      local domain_raw
-      domain_raw=$(ldapsearch -LLL -x -h "$target" -s base -b "" defaultNamingContext 2>/dev/null | grep 'defaultNamingContext:' | awk '{print $2}')
-      if [[ -z "$domain_raw" ]]; then
-        echo -e "${RED}[ERROR]${RESET} Unable to retrieve domain name from $target. Please specify DOMAIN manually."
-        exit 1
-      fi
-      # Convert from "DC=baby2,DC=vl" to "baby2.vl"
-      DOMAIN=$(echo "$domain_raw" | sed 's/DC=//Ig' | sed 's/,/./g')
-      echo -e "${GREEN}[INFO]${RESET} Retrieved domain: $DOMAIN"
-    else
-      echo -e "${RED}[ERROR]${RESET} ldapsearch is not installed. Please install ldapsearch or set DOMAIN manually."
+    DOMAIN=$(get_domain "$target")
+    if [[ $? -ne 0 || -z "$DOMAIN" ]]; then
+      echo -e "${RED}[ERROR]${RESET} Unable to retrieve domain name from $target. Please specify DOMAIN manually."
       exit 1
+    else
+      echo -e "${GREEN}[INFO]${RESET} Retrieved domain: $DOMAIN"
     fi
   fi
 
@@ -579,7 +561,12 @@ check_target_reachable "$TARGET"
 generate_hosts_file "$TARGET"
 
 # Dynamically retrieve the domain name
-get_domain "$TARGET"
+DOMAIN=$(get_domain "$TARGET")
+if [[ $? -ne 0 || -z "$DOMAIN" ]]; then
+  echo -e "${RED}[ERROR]${RESET} Failed to retrieve domain from $TARGET."
+  exit 1
+fi
+echo -e "${GREEN}[INFO]${RESET} Retrieved domain: ${DOMAIN}"
 
 # Enumerate computers from Active Directory
 enumerate_computers "$TARGET" "$USERNAME" "$PASSWORD" "$NTLM_HASH" "$KERBEROS"
