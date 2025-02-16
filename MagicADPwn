@@ -515,8 +515,21 @@ enumerate_readable_files() {
   [[ -n "$hash" ]] && cmd+=" -H \"$hash\""
   
   print_info "Running: $cmd"
-  eval "$cmd" | tee "$files_file"
+  # Capture spider_plus output into a variable, write full output to files_file
+  local spider_output
+  spider_output=$(eval "$cmd" 2>&1 | tee "$files_file")
   print_info "Readable files enumeration results saved to $files_file"
+  
+  # Attempt to extract the JSON file path from the spider_output
+  local json_file
+  json_file=$(echo "$spider_output" | grep -oP '(?<=Saved share-file metadata to ")[^"]+')
+  
+  if [[ -n "$json_file" && -f "$json_file" ]]; then
+    print_section "Spider Plus JSON Output"
+    cat "$json_file" | jq
+  else
+    print_warning "No JSON output file found."
+  fi
 }
 
 # --- Main Logic --- #
