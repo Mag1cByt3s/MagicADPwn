@@ -197,6 +197,35 @@ generate_hosts_file() {
   fi
 }
 
+# Function to dynamically get the domain name
+get_domain() {
+  local target="$1"
+  if [[ -z "$target" ]]; then
+    echo -e "${RED}[ERROR]${RESET} No target specified for domain extraction."
+    return 1
+  fi
+
+  echo -e "${GREEN}[INFO]${RESET} Running nxc smb on target ${target}..."
+  # Run nxc smb and capture output; suppress error output for clarity
+  local output
+  output=$(nxc smb "$target" 2>/dev/null)
+  if [[ -z "$output" ]]; then
+    echo -e "${RED}[ERROR]${RESET} No output received from nxc smb for ${target}."
+    return 1
+  fi
+
+  # Extract the domain using grep with a Perl regex that matches text after '(domain:'
+  local domain
+  domain=$(echo "$output" | grep -oP "\(domain:\K[^)]+")
+  if [[ -z "$domain" ]]; then
+    echo -e "${RED}[ERROR]${RESET} Could not extract domain from nxc smb output."
+    return 1
+  fi
+
+  echo -e "${GREEN}[INFO]${RESET} Got domain name: ${domain}"
+  echo "$domain"
+}
+
 # Function to retrieve a list of computers from Active Directory
 enumerate_computers() {
   local target="$1"  # Target DC's IP address
@@ -523,6 +552,9 @@ echo "Starting MagicADPwn on $TARGET"
 
 # Dynamically generate an entry for /etc/hosts
 generate_hosts_file "$TARGET"
+
+# Dynamically retrieve the domain name
+get_domain "$TARGET"
 
 # Enumerate computers from Active Directory
 enumerate_computers "$TARGET" "$USERNAME" "$PASSWORD" "$NTLM_HASH" "$KERBEROS"
